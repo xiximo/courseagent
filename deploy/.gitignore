@@ -1,0 +1,4 @@
+# Docker 打包产物
+*.tar
+*.tar.gz
+deploy/dist/

@@ -1,0 +1,499 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://courseagent.local/schemas/workflow-graph-v1.json",
+  "title": "CourseAgentWorkflowGraph",
+  "description": "Course Agent 画布定义 v1（对齐 docs/agent-runtime-spec.md）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "entryNodeId", "nodes", "edges", "policies"],
+  "properties": {
+    "version": { "const": "1" },
+    "meta": {
+      "type": "object",
+      "description": "文档/样例说明，运行时忽略",
+      "additionalProperties": true
+    },
+    "entryNodeId": { "type": "string", "minLength": 1 },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxInputChars", "minConstraintsForRecommend"],
+      "properties": {
+        "maxInputChars": { "type": "integer", "minimum": 1, "default": 500 },
+        "minConstraintsForRecommend": { "type": "integer", "minimum": 1, "default": 2 }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "ui": {
+      "type": "object",
+      "description": "仅供画布布局，运行时忽略",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "role": {
+      "type": "string",
+      "enum": ["student", "teacher", "org"]
+    },
+    "roleStatus": {
+      "type": "string",
+      "enum": ["unknown", "confirmed"]
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "choose_role",
+        "provide_constraint",
+        "ask_recommend",
+        "ask_detail",
+        "ask_enroll",
+        "restart",
+        "list_courses",
+        "out_of_scope",
+        "empty",
+        "too_long",
+        "other"
+      ]
+    },
+    "statePatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "anyOf": [{ "$ref": "#/$defs/role" }, { "type": "null" }] },
+        "roleStatus": { "$ref": "#/$defs/roleStatus" },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "city": { "type": ["string", "null"] },
+            "date": { "type": ["string", "null"] },
+            "format": { "type": ["string", "null"] },
+            "goal": { "type": ["string", "null"] }
+          }
+        },
+        "recommendedCourses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lockedCourse": { "type": ["string", "null"] },
+        "activeKnowledgeBaseId": { "type": ["string", "null"] },
+        "clearSession": {
+          "type": "boolean",
+          "description": "true 时清空约束/推荐/锁定/检索痕迹/activeKB（role 是否清空由 clearRole 决定）"
+        },
+        "clearRole": { "type": "boolean" }
+      }
+    },
+    "edgeCondition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "always" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "action"],
+          "properties": {
+            "type": { "const": "quick_action" },
+            "action": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "role"],
+          "properties": {
+            "type": { "const": "role_eq" },
+            "role": { "$ref": "#/$defs/role" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "status"],
+          "properties": {
+            "type": { "const": "role_status" },
+            "status": { "$ref": "#/$defs/roleStatus" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "min"],
+          "properties": {
+            "type": { "const": "constraints_ready" },
+            "min": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "intent"],
+          "properties": {
+            "type": { "const": "intent" },
+            "intent": { "$ref": "#/$defs/intent" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "equals"],
+          "properties": {
+            "type": { "const": "state_flag" },
+            "path": { "type": "string", "minLength": 1 },
+            "equals": true
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "items"],
+          "properties": {
+            "type": { "enum": ["and", "or"] },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/edgeCondition" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "item"],
+          "properties": {
+            "type": { "const": "not" },
+            "item": { "$ref": "#/$defs/edgeCondition" }
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "priority"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "priority": { "type": "integer", "minimum": 0 },
+        "when": { "$ref": "#/$defs/edgeCondition" },
+        "apply": { "$ref": "#/$defs/statePatch" },
+        "label": { "type": "string", "description": "画布展示用" }
+      }
+    },
+    "nodeBase": {
+      "type": "object",
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "ui": {
+          "type": "object",
+          "description": "画布坐标等，运行时忽略",
+          "additionalProperties": true
+        }
+      }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/nodeEntry" },
+        { "$ref": "#/$defs/nodeIdentity" },
+        { "$ref": "#/$defs/nodeSlotFill" },
+        { "$ref": "#/$defs/nodeScope" },
+        { "$ref": "#/$defs/nodeRagRecommend" },
+        { "$ref": "#/$defs/nodeRagQa" },
+        { "$ref": "#/$defs/nodeRagEnroll" },
+        { "$ref": "#/$defs/nodeRagPlatform" },
+        { "$ref": "#/$defs/nodeSessionControl" },
+        { "$ref": "#/$defs/nodeBoundary" }
+      ]
+    },
+    "nodeEntry": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "entry" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["welcomeText", "quickActions"],
+              "properties": {
+                "welcomeText": { "type": "string", "minLength": 1 },
+                "quickActions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "identity" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["promptWhenUnknown"],
+              "properties": {
+                "promptWhenUnknown": { "type": "string" },
+                "allowedRoles": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/role" },
+                  "default": ["student", "teacher", "org"]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeSlotFill": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "slot_fill" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["slots", "askOneMissingAtATime"],
+              "properties": {
+                "askOneMissingAtATime": { "type": "boolean" },
+                "slots": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["key", "label", "askPrompt"],
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "enum": ["city", "date", "format", "goal"]
+                      },
+                      "label": { "type": "string" },
+                      "askPrompt": { "type": "string" },
+                      "requiredForCount": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "是否计入有效约束个数"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeScope": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "scope" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["binding"],
+              "properties": {
+                "binding": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "student": { "type": ["string", "null"] },
+                    "teacher": { "type": ["string", "null"] },
+                    "org": { "type": ["string", "null"] }
+                  }
+                },
+                "missingKbText": {
+                  "type": "string",
+                  "default": "当前身份对应的知识库尚未配置，请联系人工客服。"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeRagRecommend": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "rag_recommend" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxCourses": { "type": "integer", "minimum": 1, "maximum": 2, "default": 2 },
+                "lockFirstCourse": { "type": "boolean", "default": true },
+                "systemExtra": { "type": "string" },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeRagQa": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "rag_qa" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "systemExtra": { "type": "string" },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeRagEnroll": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "rag_enroll" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "systemExtra": { "type": "string" },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeRagPlatform": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "rag_platform" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "systemExtra": { "type": "string" },
+                "forbidCourseRecommend": { "type": "boolean", "const": true },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeSessionControl": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "session_control" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "restartText": { "type": "string" },
+                "listCoursesIntro": { "type": "string" },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeBoundary": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "required": ["type", "config"],
+          "properties": {
+            "type": { "const": "boundary" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["templates"],
+              "properties": {
+                "templates": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "outOfScope": { "type": "string" },
+                    "modelError": { "type": "string" },
+                    "crossMaterial": { "type": "string" }
+                  }
+                },
+                "quickActions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

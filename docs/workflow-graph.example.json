@@ -1,0 +1,522 @@
+{
+  "version": "1",
+  "meta": {
+    "title": "默认顾问拓扑（最小可跑样例）",
+    "kbPlaceholders": {
+      "kb_material_a": "素材A·暑期AI素养夏令营手册",
+      "kb_material_b": "素材B·教师AI素养培训体系介绍",
+      "kb_material_c": "素材C·OPC平台产品白皮书"
+    },
+    "transitionNote": "waitForUser=true 的节点在下一轮用户输入时先执行自身：若需跳转则产出 intent 且 waitForUser=false，由执行循环同轮 hop 到目标节点再生成回复。边上的 always 自环表示「本轮仍停留」仅在节点主动结束等待并选边时生效；推荐后默认 intent=ask_detail → n_qa。"
+  },
+  "entryNodeId": "n_entry",
+  "policies": {
+    "maxInputChars": 500,
+    "minConstraintsForRecommend": 2
+  },
+  "nodes": [
+    {
+      "id": "n_entry",
+      "type": "entry",
+      "name": "欢迎与分流",
+      "ui": { "x": 80, "y": 280 },
+      "config": {
+        "welcomeText": "您好，我是 AI 教育中心课程顾问。可咨询学生暑期营、教师培训或 OPC 平台服务。请选择入口，或直接说明您的身份。",
+        "quickActions": ["学生课程", "教师培训", "平台服务", "重新开始"]
+      }
+    },
+    {
+      "id": "n_identity",
+      "type": "identity",
+      "name": "身份澄清",
+      "ui": { "x": 360, "y": 280 },
+      "config": {
+        "promptWhenUnknown": "请问您是学生/家长、教师，还是机构/企业人员？",
+        "allowedRoles": ["student", "teacher", "org"]
+      }
+    },
+    {
+      "id": "n_slots",
+      "type": "slot_fill",
+      "name": "约束采集",
+      "ui": { "x": 640, "y": 200 },
+      "config": {
+        "askOneMissingAtATime": true,
+        "slots": [
+          {
+            "key": "city",
+            "label": "城市/地点",
+            "askPrompt": "您更倾向哪个城市或地区上课？",
+            "requiredForCount": true
+          },
+          {
+            "key": "date",
+            "label": "可用日期",
+            "askPrompt": "问您方便的上课时间？（如 7 月、8 月或周末）",
+            "requiredForCount": true
+          },
+          {
+            "key": "format",
+            "label": "线上/线下",
+            "askPrompt": "您更希望线上还是线下？",
+            "requiredForCount": true
+          },
+          {
+            "key": "goal",
+            "label": "学习目标",
+            "askPrompt": "您最希望达成的学习目标是什么？",
+            "requiredForCount": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "n_scope",
+      "type": "scope",
+      "name": "知识范围绑定",
+      "ui": { "x": 920, "y": 200 },
+      "config": {
+        "binding": {
+          "student": "kb_material_a",
+          "teacher": "kb_material_b",
+          "org": "kb_material_c"
+        },
+        "missingKbText": "当前身份对应的知识库尚未配置或未完成索引，请联系人工客服。"
+      }
+    },
+    {
+      "id": "n_recommend",
+      "type": "rag_recommend",
+      "name": "班型推荐",
+      "ui": { "x": 1200, "y": 80 },
+      "config": {
+        "maxCourses": 2,
+        "lockFirstCourse": true,
+        "systemExtra": "仅依据当前知识库资料推荐 1–2 个真实班型；理由须逐条对应已采集约束；不得编造费用与档期。",
+        "quickActions": ["了解报名方式", "查看所有课程", "重新开始"]
+      }
+    },
+    {
+      "id": "n_platform",
+      "type": "rag_platform",
+      "name": "平台服务介绍",
+      "ui": { "x": 1200, "y": 320 },
+      "config": {
+        "forbidCourseRecommend": true,
+        "systemExtra": "仅介绍 OPC 平台、会员与企业合作；不得输出学生/教师班型推荐，不得把会员价当作课程费用。",
+        "quickActions": ["重新开始", "查看所有课程"]
+      }
+    },
+    {
+      "id": "n_qa",
+      "type": "rag_qa",
+      "name": "详情追问",
+      "ui": { "x": 1480, "y": 80 },
+      "config": {
+        "systemExtra": "围绕 lockedCourse 回答；末尾可提及文档名与章节；资料不足则明确说明。",
+        "quickActions": ["了解报名方式", "重新开始"]
+      }
+    },
+    {
+      "id": "n_enroll",
+      "type": "rag_enroll",
+      "name": "报名引导",
+      "ui": { "x": 1760, "y": 80 },
+      "config": {
+        "systemExtra": "仅提供资料中已有的报名方式；禁止虚构链接、电话、余位或截止状态。",
+        "quickActions": ["重新开始"]
+      }
+    },
+    {
+      "id": "n_control",
+      "type": "session_control",
+      "name": "会话控制",
+      "ui": { "x": 640, "y": 480 },
+      "config": {
+        "restartText": "好的，已为您重新开始。请重新选择服务入口。",
+        "listCoursesIntro": "根据当前身份资料，可了解的班型/服务如下：",
+        "quickActions": ["学生课程", "教师培训", "平台服务"]
+      }
+    },
+    {
+      "id": "n_boundary",
+      "type": "boundary",
+      "name": "边界与异常",
+      "ui": { "x": 360, "y": 480 },
+      "config": {
+        "templates": {
+          "outOfScope": "该问题超出课程顾问服务范围。您可选择学生课程、教师培训或平台服务继续咨询。",
+          "modelError": "模型暂时不可用，请稍后重试，或联系人工客服。",
+          "crossMaterial": "该问题属于其他服务范畴，为避免信息混淆，请切换对应入口后再问。"
+        },
+        "quickActions": ["学生课程", "教师培训", "平台服务", "重新开始"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_entry_student",
+      "source": "n_entry",
+      "target": "n_identity",
+      "priority": 10,
+      "label": "点击学生",
+      "when": { "type": "quick_action", "action": "学生课程" },
+      "apply": { "role": "student", "roleStatus": "confirmed" }
+    },
+    {
+      "id": "e_entry_teacher",
+      "source": "n_entry",
+      "target": "n_identity",
+      "priority": 10,
+      "label": "点击教师",
+      "when": { "type": "quick_action", "action": "教师培训" },
+      "apply": { "role": "teacher", "roleStatus": "confirmed" }
+    },
+    {
+      "id": "e_entry_org",
+      "source": "n_entry",
+      "target": "n_identity",
+      "priority": 10,
+      "label": "点击平台",
+      "when": { "type": "quick_action", "action": "平台服务" },
+      "apply": { "role": "org", "roleStatus": "confirmed" }
+    },
+    {
+      "id": "e_entry_restart",
+      "source": "n_entry",
+      "target": "n_control",
+      "priority": 10,
+      "label": "重新开始",
+      "when": { "type": "quick_action", "action": "重新开始" }
+    },
+    {
+      "id": "e_entry_nl",
+      "source": "n_entry",
+      "target": "n_identity",
+      "priority": 100,
+      "label": "自然语言",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_id_out",
+      "source": "n_identity",
+      "target": "n_boundary",
+      "priority": 10,
+      "label": "超范围",
+      "when": { "type": "intent", "intent": "out_of_scope" }
+    },
+    {
+      "id": "e_id_restart",
+      "source": "n_identity",
+      "target": "n_control",
+      "priority": 10,
+      "when": { "type": "intent", "intent": "restart" }
+    },
+    {
+      "id": "e_id_org_skip_slots",
+      "source": "n_identity",
+      "target": "n_scope",
+      "priority": 15,
+      "label": "机构跳过班型约束",
+      "when": {
+        "type": "and",
+        "items": [
+          { "type": "role_status", "status": "confirmed" },
+          { "type": "role_eq", "role": "org" }
+        ]
+      }
+    },
+    {
+      "id": "e_id_confirmed",
+      "source": "n_identity",
+      "target": "n_slots",
+      "priority": 20,
+      "label": "学生/教师→采集",
+      "when": { "type": "role_status", "status": "confirmed" }
+    },
+    {
+      "id": "e_id_wait",
+      "source": "n_identity",
+      "target": "n_identity",
+      "priority": 100,
+      "label": "继续澄清",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_slot_restart",
+      "source": "n_slots",
+      "target": "n_control",
+      "priority": 5,
+      "when": { "type": "intent", "intent": "restart" }
+    },
+    {
+      "id": "e_slot_list",
+      "source": "n_slots",
+      "target": "n_control",
+      "priority": 5,
+      "when": { "type": "intent", "intent": "list_courses" }
+    },
+    {
+      "id": "e_slot_out",
+      "source": "n_slots",
+      "target": "n_boundary",
+      "priority": 5,
+      "when": { "type": "intent", "intent": "out_of_scope" }
+    },
+    {
+      "id": "e_slot_ready",
+      "source": "n_slots",
+      "target": "n_scope",
+      "priority": 20,
+      "label": "约束足够",
+      "when": { "type": "constraints_ready", "min": 2 }
+    },
+    {
+      "id": "e_slot_wait",
+      "source": "n_slots",
+      "target": "n_slots",
+      "priority": 100,
+      "label": "继续采集",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_scope_org",
+      "source": "n_scope",
+      "target": "n_platform",
+      "priority": 10,
+      "label": "机构→平台库",
+      "when": { "type": "role_eq", "role": "org" }
+    },
+    {
+      "id": "e_scope_course",
+      "source": "n_scope",
+      "target": "n_recommend",
+      "priority": 20,
+      "label": "学生/教师→推荐",
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "role_eq", "role": "student" },
+          { "type": "role_eq", "role": "teacher" }
+        ]
+      }
+    },
+
+    {
+      "id": "e_rec_enroll",
+      "source": "n_recommend",
+      "target": "n_enroll",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "ask_enroll" },
+          { "type": "quick_action", "action": "了解报名方式" }
+        ]
+      }
+    },
+    {
+      "id": "e_rec_restart",
+      "source": "n_recommend",
+      "target": "n_control",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "restart" },
+          { "type": "quick_action", "action": "重新开始" }
+        ]
+      }
+    },
+    {
+      "id": "e_rec_list",
+      "source": "n_recommend",
+      "target": "n_control",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "list_courses" },
+          { "type": "quick_action", "action": "查看所有课程" }
+        ]
+      }
+    },
+    {
+      "id": "e_rec_qa",
+      "source": "n_recommend",
+      "target": "n_qa",
+      "priority": 30,
+      "label": "追问详情",
+      "when": { "type": "intent", "intent": "ask_detail" }
+    },
+    {
+      "id": "e_rec_other_to_qa",
+      "source": "n_recommend",
+      "target": "n_qa",
+      "priority": 40,
+      "label": "其它输入默认当追问",
+      "when": { "type": "intent", "intent": "other" }
+    },
+    {
+      "id": "e_rec_stay",
+      "source": "n_recommend",
+      "target": "n_recommend",
+      "priority": 100,
+      "label": "仍停在推荐（仅当节点未结束等待）",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_plat_restart",
+      "source": "n_platform",
+      "target": "n_control",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "restart" },
+          { "type": "quick_action", "action": "重新开始" }
+        ]
+      }
+    },
+    {
+      "id": "e_plat_out",
+      "source": "n_platform",
+      "target": "n_boundary",
+      "priority": 10,
+      "when": { "type": "intent", "intent": "out_of_scope" }
+    },
+    {
+      "id": "e_plat_stay",
+      "source": "n_platform",
+      "target": "n_platform",
+      "priority": 100,
+      "label": "继续平台问答",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_qa_enroll",
+      "source": "n_qa",
+      "target": "n_enroll",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "ask_enroll" },
+          { "type": "quick_action", "action": "了解报名方式" }
+        ]
+      }
+    },
+    {
+      "id": "e_qa_restart",
+      "source": "n_qa",
+      "target": "n_control",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "restart" },
+          { "type": "quick_action", "action": "重新开始" }
+        ]
+      }
+    },
+    {
+      "id": "e_qa_cross",
+      "source": "n_qa",
+      "target": "n_boundary",
+      "priority": 10,
+      "when": { "type": "intent", "intent": "out_of_scope" }
+    },
+    {
+      "id": "e_qa_stay",
+      "source": "n_qa",
+      "target": "n_qa",
+      "priority": 100,
+      "label": "多轮追问",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_enroll_restart",
+      "source": "n_enroll",
+      "target": "n_control",
+      "priority": 10,
+      "when": {
+        "type": "or",
+        "items": [
+          { "type": "intent", "intent": "restart" },
+          { "type": "quick_action", "action": "重新开始" }
+        ]
+      }
+    },
+    {
+      "id": "e_enroll_qa",
+      "source": "n_enroll",
+      "target": "n_qa",
+      "priority": 100,
+      "label": "报名后继续问",
+      "when": { "type": "always" }
+    },
+
+    {
+      "id": "e_ctrl_done",
+      "source": "n_control",
+      "target": "n_entry",
+      "priority": 10,
+      "label": "重置回入口",
+      "when": { "type": "intent", "intent": "restart" },
+      "apply": { "clearSession": true, "clearRole": true }
+    },
+    {
+      "id": "e_ctrl_list_back",
+      "source": "n_control",
+      "target": "n_entry",
+      "priority": 20,
+      "when": { "type": "always" },
+      "apply": {}
+    },
+
+    {
+      "id": "e_bound_restart",
+      "source": "n_boundary",
+      "target": "n_control",
+      "priority": 10,
+      "when": { "type": "quick_action", "action": "重新开始" }
+    },
+    {
+      "id": "e_bound_student",
+      "source": "n_boundary",
+      "target": "n_identity",
+      "priority": 10,
+      "when": { "type": "quick_action", "action": "学生课程" },
+      "apply": { "role": "student", "roleStatus": "confirmed", "clearSession": true }
+    },
+    {
+      "id": "e_bound_teacher",
+      "source": "n_boundary",
+      "target": "n_identity",
+      "priority": 10,
+      "when": { "type": "quick_action", "action": "教师培训" },
+      "apply": { "role": "teacher", "roleStatus": "confirmed", "clearSession": true }
+    },
+    {
+      "id": "e_bound_org",
+      "source": "n_boundary",
+      "target": "n_identity",
+      "priority": 10,
+      "when": { "type": "quick_action", "action": "平台服务" },
+      "apply": { "role": "org", "roleStatus": "confirmed", "clearSession": true }
+    },
+    {
+      "id": "e_bound_back",
+      "source": "n_boundary",
+      "target": "n_entry",
+      "priority": 100,
+      "when": { "type": "always" }
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.docker.example
+webadmin/.env.development
+webadmin/.env.local
+webadmin/.env.*.local
+
+# Dependencies & virtualenvs
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local ML weights (download separately; do not push to GitHub)
+backend/models/
+
+# Build / export artifacts
+dist/
+build/
+deploy/dist/
+*.tar
+*.tar.gz
+*.bin
+*.safetensors
+webadmin/dist/
+backend/.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+~$*
+*.tmp
+
+# Root course materials (do not publish)
+/*.docx
+/素材*
+
+# Logs & runtime
+*.log
+*.pid
+.cache/
+uploads/
+tmp/
+temp/

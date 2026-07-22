@@ -1,0 +1,2 @@
+# 本地开发默认全量依赖（含向量）。Docker 轻量镜像用 requirements-api.txt
+-r requirements-ml.txt

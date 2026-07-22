@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 课程顾问 · 测试用例清单</title>
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --surface: #ffffff;
+      --ink: #1c1917;
+      --muted: #78716c;
+      --line: #e7e5e4;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #b45309;
+      --warn-soft: #ffedd5;
+      --pass: #15803d;
+      --fail: #b91c1c;
+      --info: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 1.5rem 1.25rem 1.25rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header .wrap, main, footer .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.45rem;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1rem;
+      margin-top: 1rem;
+      align-items: center;
+    }
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .chip {
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .chip.neutral { background: #f5f5f4; color: var(--muted); }
+    label.filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    select, button {
+      font: inherit;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 0.35rem 0.6rem;
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    button:hover { filter: brightness(0.97); }
+    main { padding: 1.25rem; }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    section > h2 {
+      margin: 0;
+      padding: 0.85rem 1rem;
+      font-size: 1.05rem;
+      border-bottom: 1px solid var(--line);
+      background: #fafaf9;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.75rem;
+    }
+    section > h2 span.count {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .intro {
+      padding: 0.85rem 1rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--line);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      background: #fafaf9;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: none;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafaf9; }
+    .id {
+      font-family: ui-monospace, Consolas, monospace;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+      margin: 0 0.2rem 0.2rem 0;
+      font-weight: 600;
+    }
+    .tag.p0 { background: #fee2e2; color: var(--fail); }
+    .tag.p1 { background: var(--warn-soft); color: var(--warn); }
+    .tag.p2 { background: #e0e7ff; color: var(--info); }
+    .tag.role { background: #f5f5f4; color: #44403c; }
+    .assert { color: var(--pass); }
+    .steps { margin: 0; padding-left: 1.1rem; }
+    .steps li { margin: 0.15rem 0; }
+    .result {
+      display: inline-flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .result input { accent-color: var(--accent); }
+    footer {
+      padding: 1.5rem 1.25rem 2.5rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    @media print {
+      header { position: static; }
+      .toolbar button { display: none; }
+      section { break-inside: avoid; }
+    }
+    @media (max-width: 800px) {
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr {
+        border-bottom: 1px solid var(--line);
+        padding: 0.75rem 0;
+      }
+      td {
+        border: none;
+        padding: 0.25rem 0.85rem;
+      }
+      td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.72rem;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 0.15rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>AI 课程顾问 Agent · 测试用例清单</h1>
+      <p class="sub">依据《需求.md》七步流程、知识边界 A/B/C、官方验收用例，并覆盖工作流画布、公开对话、客户线索等实现项。</p>
+      <div class="toolbar">
+        <div class="stats">
+          <span class="chip" id="totalChip">用例 0</span>
+          <span class="chip neutral" id="passChip">通过 0</span>
+          <span class="chip neutral" id="failChip">失败 0</span>
+          <span class="chip neutral" id="skipChip">未测 0</span>
+        </div>
+        <label class="filter">分类
+          <select id="catFilter">
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <label class="filter">优先级
+          <select id="priFilter">
+            <option value="all">全部</option>
+            <option value="P0">P0 必过</option>
+            <option value="P1">P1 重要</option>
+            <option value="P2">P2 回归</option>
+          </select>
+        </label>
+        <button type="button" class="primary" id="exportBtn">导出结果 JSON</button>
+        <button type="button" id="resetBtn">清空勾选</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer>
+    <div class="wrap">
+      来源：需求.md（业务流程 §四、功能异常 §五、官方验收 §七）+ 当前产品实现（Workflow Agent / 公开对话 / 客户线索）。勾选结果仅保存在本机浏览器 localStorage。
+    </div>
+  </footer>
+
+  <script>
+    const SUITES = [
+      {
+        id: "flow",
+        title: "一、七步业务流程",
+        desc: "对应需求「必须实现的业务流程」步骤 1—7。",
+        cases: [
+          {
+            id: "F-01", pri: "P0", role: "通用",
+            title: "欢迎与分流",
+            steps: ["打开公开对话页 /chat/{agentId}", "观察首条助手消息与快捷按钮"],
+            expect: "说明服务范围；提供学生课程、教师培训、平台服务入口；欢迎区不并列「重新开始」以免误触。"
+          },
+          {
+            id: "F-02", pri: "P0", role: "学生",
+            title: "按钮进入学生分支",
+            steps: ["点击「学生课程」"],
+            expect: "身份确认为学生/家长；进入约束采集；未澄清前不得直接推荐班型。"
+          },
+          {
+            id: "F-03", pri: "P0", role: "教师",
+            title: "按钮进入教师分支",
+            steps: ["点击「教师培训」"],
+            expect: "身份为教师；进入约束采集/追问；不得返回「已为您重新开始」类文案。"
+          },
+          {
+            id: "F-04", pri: "P0", role: "机构",
+            title: "按钮进入平台分支",
+            steps: ["点击「平台服务」"],
+            expect: "身份为机构/企业；进入平台服务咨询路径；不推荐学生/教师班型。"
+          },
+          {
+            id: "F-05", pri: "P0", role: "通用",
+            title: "自然语言身份澄清",
+            steps: ["不点按钮，直接输入「我是高中老师，想报暑期集训」"],
+            expect: "识别为教师；必要时追问；未确认身份前不推荐班型。"
+          },
+          {
+            id: "F-06", pri: "P0", role: "学生",
+            title: "约束采集不重复追问",
+            steps: ["学生路径下一次性说明「北京、7月、线下、想学AI素养」"],
+            expect: "已提供字段不再追问；约束≥2 后可进入推荐。"
+          },
+          {
+            id: "F-07", pri: "P0", role: "学生",
+            title: "班型推荐",
+            steps: ["约束足够后触发推荐"],
+            expect: "推荐 1—2 个真实班型（素材A）；含名称、关键安排、逐条对应约束的理由；无资料外班型。"
+          },
+          {
+            id: "F-08", pri: "P0", role: "学生",
+            title: "详情追问与引用",
+            steps: ["推荐后追问「这个班多少钱/什么时候」"],
+            expect: "基于当前班型与素材A回答；标注文档名与章节；可点击溯源。"
+          },
+          {
+            id: "F-09", pri: "P0", role: "学生",
+            title: "报名引导",
+            steps: ["表达「我想报名」"],
+            expect: "仅给出资料中已有报名方式；资料缺失时说明需人工确认；不虚构链接/电话/余位。"
+          },
+          {
+            id: "F-10", pri: "P0", role: "通用",
+            title: "重新开始清空上下文",
+            steps: ["完成一轮推荐后，点击页头「重新开始」"],
+            expect: "回到欢迎分流；不再引用旧班型/旧身份；可重新选择入口。"
+          },
+          {
+            id: "F-11", pri: "P1", role: "通用",
+            title: "查看所有课程",
+            steps: ["确认身份后点击「查看所有课程」"],
+            expect: "列出当前身份下资料中的班型；不清除身份；随后点「教师培训/学生课程」不得被当成重启。"
+          }
+        ]
+      },
+      {
+        id: "kb",
+        title: "二、知识边界（素材 A/B/C）",
+        desc: "硬隔离：学生→A、教师→B、机构→C；禁止跨库兜底与价格混淆。",
+        cases: [
+          {
+            id: "K-01", pri: "P0", role: "学生",
+            title: "学生仅用素材A",
+            steps: ["学生身份下询问北京线下班安排"],
+            expect: "引用暑期AI素养夏令营手册；不出现教师培训或平台会员价格。"
+          },
+          {
+            id: "K-02", pri: "P0", role: "教师",
+            title: "教师仅用素材B",
+            steps: ["教师身份下询问暑期集训/周末研修"],
+            expect: "引用教师AI素养培训体系介绍；不回答学生营期或平台服务价格。"
+          },
+          {
+            id: "K-03", pri: "P0", role: "机构",
+            title: "机构仅用素材C",
+            steps: ["平台路径询问会员权益/企业合作"],
+            expect: "引用OPC平台产品白皮书；不参与学生/教师班型推荐；不把会员价当课程费。"
+          },
+          {
+            id: "K-04", pri: "P0", role: "学生",
+            title: "课程价与会员价不混淆",
+            steps: ["学生路径询问课程费用，再追问平台会员价格"],
+            expect: "课程费用来自A；会员价说明属平台范围/无法在学生路径确认，二者不混用。"
+          },
+          {
+            id: "K-05", pri: "P0", role: "通用",
+            title: "资料外信息拒答",
+            steps: ["询问资料未记载的优惠码、余位、内部折扣"],
+            expect: "明确无法确认/需人工；不编造。"
+          },
+          {
+            id: "K-06", pri: "P1", role: "通用",
+            title: "scope 节点知识库绑定",
+            steps: ["管理端检查 workflow 中 scope 三角色各绑唯一知识库"],
+            expect: "student/teacher/org 各对应独立 KB；无跨角色共用兜底库。"
+          }
+        ]
+      },
+      {
+        id: "official",
+        title: "三、官方验收用例（§七）",
+        desc: "评委验收矩阵：资料事实 8 + 边界 4 + 推荐 5 + 多轮 3 + 异常 5。",
+        cases: [
+          {
+            id: "O-FACT-01", pri: "P0", role: "学生",
+            title: "班型事实·北京线下",
+            steps: ["确认学生身份", "询问北京线下班时间/地点/费用/师资/大纲（按资料可答项）"],
+            expect: "事实正确；引用文档与章节正确；不跨资料。"
+          },
+          {
+            id: "O-FACT-02", pri: "P0", role: "学生",
+            title: "班型事实·上海线下",
+            steps: ["同上，针对上海线下班"],
+            expect: "事实与引用正确。"
+          },
+          {
+            id: "O-FACT-03", pri: "P0", role: "学生",
+            title: "班型事实·线上直播班",
+            steps: ["同上，针对线上直播班"],
+            expect: "事实与引用正确。"
+          },
+          {
+            id: "O-FACT-04", pri: "P0", role: "教师",
+            title: "班型事实·暑期集训",
+            steps: ["教师身份", "询问集训班时间/安排/目标等"],
+            expect: "事实来自素材B；引用正确。"
+          },
+          {
+            id: "O-FACT-05", pri: "P0", role: "教师",
+            title: "班型事实·周末研修",
+            steps: ["教师身份", "询问周末研修班"],
+            expect: "事实来自素材B；引用正确。"
+          },
+          {
+            id: "O-FACT-06", pri: "P0", role: "机构",
+            title: "平台事实·会员/合作",
+            steps: ["平台路径询问会员权益或企业合作要点"],
+            expect: "事实来自素材C；引用正确。"
+          },
+          {
+            id: "O-FACT-07", pri: "P0", role: "通用",
+            title: "引用可定位",
+            steps: ["任意资料问答后点击引用"],
+            expect: "可打开/预览对应文档摘录并定位章节。"
+          },
+          {
+            id: "O-FACT-08", pri: "P0", role: "通用",
+            title: "动态生成非固定答案",
+            steps: ["对同一班型换表述追问两次"],
+            expect: "由 LLM+检索生成，非关键词整段固定模板课程答案（欢迎/重置除外）。"
+          },
+          {
+            id: "O-BOUND-01", pri: "P0", role: "学生",
+            title: "边界·学生问会员价",
+            steps: ["学生路径问平台会员价格"],
+            expect: "不与课程价混淆；说明超出当前资料范围或引导平台入口。"
+          },
+          {
+            id: "O-BOUND-02", pri: "P0", role: "教师",
+            title: "边界·教师问学生营费用",
+            steps: ["教师路径问夏令营小孩班费用"],
+            expect: "拒绝跨资料；可引导正确入口。"
+          },
+          {
+            id: "O-BOUND-03", pri: "P0", role: "机构",
+            title: "边界·机构问课程班型推荐",
+            steps: ["平台路径要求推荐学生班型"],
+            expect: "不推荐学生/教师班型；停留平台服务说明。"
+          },
+          {
+            id: "O-BOUND-04", pri: "P0", role: "通用",
+            title: "边界·资料外问题",
+            steps: ["问与业务无关或资料未覆盖问题"],
+            expect: "明确无法确认；可返回菜单。"
+          },
+          {
+            id: "O-REC-01", pri: "P0", role: "学生",
+            title: "推荐·城市+线下",
+            steps: ["学生 + 北京 + 线下 + 目标"],
+            expect: "先澄清再推荐；班型真实；理由对应约束。"
+          },
+          {
+            id: "O-REC-02", pri: "P0", role: "学生",
+            title: "推荐·线上+日期",
+            steps: ["学生 + 线上 + 指定日期窗口"],
+            expect: "推荐与形式/日期一致。"
+          },
+          {
+            id: "O-REC-03", pri: "P0", role: "教师",
+            title: "推荐·暑期集训偏好",
+            steps: ["教师 + 暑期集训相关约束"],
+            expect: "推荐素材B真实班型；理由对应。"
+          },
+          {
+            id: "O-REC-04", pri: "P0", role: "教师",
+            title: "推荐·周末研修偏好",
+            steps: ["教师 + 周末/研修约束"],
+            expect: "推荐与约束一致。"
+          },
+          {
+            id: "O-REC-05", pri: "P0", role: "学生",
+            title: "推荐数量与真实性",
+            steps: ["完成推荐"],
+            expect: "1—2 个班型；名称存在于资料；无编造班型。"
+          },
+          {
+            id: "O-MULTI-01", pri: "P0", role: "学生",
+            title: "多轮·推荐→时间",
+            steps: ["完成推荐", "追问「这个班什么时候」"],
+            expect: "继承上文班型上下文。"
+          },
+          {
+            id: "O-MULTI-02", pri: "P0", role: "学生",
+            title: "多轮·再追问准备事项",
+            steps: ["继续问「需要带什么」"],
+            expect: "仍锁定同一班型；三轮连续成立。"
+          },
+          {
+            id: "O-MULTI-03", pri: "P1", role: "教师",
+            title: "多轮·教师路径连续追问",
+            steps: ["教师推荐后连续两轮追问安排/报名"],
+            expect: "上下文不丢；引用仍属素材B。"
+          },
+          {
+            id: "O-EX-01", pri: "P0", role: "通用",
+            title: "异常·空输入",
+            steps: ["提交空内容"],
+            expect: "提示重新输入；不崩溃；可继续。"
+          },
+          {
+            id: "O-EX-02", pri: "P0", role: "通用",
+            title: "异常·超 500 字",
+            steps: ["粘贴超过 500 字文本发送"],
+            expect: "提示精简；不崩溃。"
+          },
+          {
+            id: "O-EX-03", pri: "P0", role: "通用",
+            title: "异常·特殊符号",
+            steps: ["发送含 emoji/控制字符/SQL 片段等"],
+            expect: "不崩溃；可继续对话。"
+          },
+          {
+            id: "O-EX-04", pri: "P0", role: "通用",
+            title: "异常·无关问题（天气）",
+            steps: ["询问今天天气"],
+            expect: "说明服务边界并返回菜单/入口。"
+          },
+          {
+            id: "O-EX-05", pri: "P1", role: "通用",
+            title: "异常·模型不可用",
+            steps: ["模拟 LLM 失败或关闭密钥后提问"],
+            expect: "提示稍后重试或降级说明；界面错误可见；不白屏。"
+          }
+        ]
+      },
+      {
+        id: "ui",
+        title: "四、界面与交互",
+        desc: "需求 §五 界面要求 + 公开对话体验。",
+        cases: [
+          {
+            id: "U-01", pri: "P0", role: "通用",
+            title: "消息气泡区分角色",
+            steps: ["发送任意消息"],
+            expect: "用户与助手消息视觉可区分；中文气泡不出现一字换行异常。"
+          },
+          {
+            id: "U-02", pri: "P0", role: "通用",
+            title: "加载反馈",
+            steps: ["发送消息观察等待态"],
+            expect: "有 typing/禁用发送等加载反馈。"
+          },
+          {
+            id: "U-03", pri: "P0", role: "通用",
+            title: "错误信息可见",
+            steps: ["触发 API 错误（错误 agentId 等）"],
+            expect: "页面展示可读错误，不静默失败。"
+          },
+          {
+            id: "U-04", pri: "P1", role: "通用",
+            title: "快捷按钮与乐观更新",
+            steps: ["点击快捷按钮"],
+            expect: "用户消息立即出现；返回后与服务器消息一致。"
+          },
+          {
+            id: "U-05", pri: "P1", role: "通用",
+            title: "移动端首屏可用",
+            steps: ["窄屏打开公开对话"],
+            expect: "入口按钮可点；输入区可达；无遮挡。"
+          }
+        ]
+      },
+      {
+        id: "lead",
+        title: "五、客户线索（产品扩展）",
+        desc: "每次公开咨询/重新开始记一条线索；管理端可查 IP、画像与对话。",
+        cases: [
+          {
+            id: "L-01", pri: "P0", role: "管理",
+            title: "新建会话产生线索",
+            steps: ["公开页打开新会话", "管理端打开「客户线索」"],
+            expect: "出现新线索；含 IP（或代理头）、开始时间；消息挂到该线索。"
+          },
+          {
+            id: "L-02", pri: "P0", role: "管理",
+            title: "重新开始切分咨询",
+            steps: ["同一会话完成一轮后页头「重新开始」", "刷新线索列表"],
+            expect: "旧线索关闭并保留画像；新线索 index+1；后续消息属新线索。"
+          },
+          {
+            id: "L-03", pri: "P0", role: "管理",
+            title: "线索详情对话完整",
+            steps: ["点击某线索「详情」"],
+            expect: "展示该次咨询全部 messages；含用户与助手；可看引用（若有）。"
+          },
+          {
+            id: "L-04", pri: "P1", role: "管理",
+            title: "画像同步",
+            steps: ["选择教师并补充城市等约束后查看线索"],
+            expect: "role/constraints 等画像与会话一致。"
+          },
+          {
+            id: "L-05", pri: "P1", role: "管理",
+            title: "预览不记线索",
+            steps: ["管理端对话预览中聊天与重置"],
+            expect: "客户线索列表不新增预览污染数据。"
+          },
+          {
+            id: "L-06", pri: "P2", role: "管理",
+            title: "按 Agent 筛选",
+            steps: ["线索页切换 Agent 筛选"],
+            expect: "列表过滤正确。"
+          }
+        ]
+      },
+      {
+        id: "admin",
+        title: "六、管理端与工作流",
+        desc: "画布为运行时控制面；配置保存后公开对话生效。",
+        cases: [
+          {
+            id: "A-01", pri: "P1", role: "管理",
+            title: "工作流画布保存",
+            steps: ["修改入口欢迎语并保存", "刷新公开对话"],
+            expect: "公开会话使用新欢迎语（存盘 workflowGraph）。"
+          },
+          {
+            id: "A-02", pri: "P1", role: "管理",
+            title: "预览与公开隔离",
+            steps: ["预览重置清空消息；公开重置保留历史但开新线索"],
+            expect: "行为符合设计：预览可清消息；公开按线索切分。"
+          },
+          {
+            id: "A-03", pri: "P1", role: "管理",
+            title: "知识库上传与索引",
+            steps: ["上传 A/B/C 文档并等待索引"],
+            expect: "文档可检索；推荐/问答能命中。"
+          },
+          {
+            id: "A-04", pri: "P2", role: "管理",
+            title: "Agent 启停",
+            steps: ["将 Agent 设为草稿后访问公开页"],
+            expect: "公开会话拒绝或提示未启用；预览仍可用。"
+          }
+        ]
+      },
+      {
+        id: "security",
+        title: "七、安全与交付",
+        desc: "密钥、部署与交付物验收。",
+        cases: [
+          {
+            id: "S-01", pri: "P0", role: "通用",
+            title: "密钥不入库",
+            steps: ["检查仓库无真实 API Key"],
+            expect: "仅环境变量/.env（gitignore）；.env.example 无真值。"
+          },
+          {
+            id: "S-02", pri: "P1", role: "通用",
+            title: "Embed 域名校验",
+            steps: ["配置 allowedOrigins 后带错误 Origin 调用"],
+            expect: "嵌入场景拒绝未授权来源。"
+          },
+          {
+            id: "S-03", pri: "P2", role: "交付",
+            title: "交付物齐全",
+            steps: ["核对可运行包、说明、技术说明、测试记录、演示视频"],
+            expect: "符合需求交付清单 1—6 项。"
+          }
+        ]
+      }
+    ];
+
+    const storageKey = "courseagent-testcase-results-v1";
+
+    function loadResults() {
+      try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); }
+      catch { return {}; }
+    }
+    function saveResults(map) {
+      localStorage.setItem(storageKey, JSON.stringify(map));
+    }
+
+    function allCases() {
+      return SUITES.flatMap(s => s.cases.map(c => ({ ...c, suite: s.id, suiteTitle: s.title })));
+    }
+
+    function render() {
+      const results = loadResults();
+      const cat = document.getElementById("catFilter").value;
+      const pri = document.getElementById("priFilter").value;
+      const app = document.getElementById("app");
+      app.innerHTML = "";
+
+      let pass = 0, fail = 0, skip = 0, shown = 0;
+
+      SUITES.forEach(suite => {
+        if (cat !== "all" && cat !== suite.id) return;
+        const cases = suite.cases.filter(c => pri === "all" || c.pri === pri);
+        if (!cases.length) return;
+
+        const section = document.createElement("section");
+        section.dataset.suite = suite.id;
+        section.innerHTML = `
+          <h2>${suite.title}<span class="count">${cases.length} 条</span></h2>
+          <div class="intro">${suite.desc}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>编号</th>
+                <th>用例</th>
+                <th>步骤</th>
+                <th>预期结果</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        `;
+        const tbody = section.querySelector("tbody");
+        cases.forEach(c => {
+          shown++;
+          const st = results[c.id] || "";
+          if (st === "pass") pass++;
+          else if (st === "fail") fail++;
+          else skip++;
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td data-label="编号"><span class="id">${c.id}</span><div>
+              <span class="tag ${c.pri.toLowerCase()}">${c.pri}</span>
+              <span class="tag role">${c.role}</span>
+            </div></td>
+            <td data-label="用例"><strong>${c.title}</strong></td>
+            <td data-label="步骤"><ol class="steps">${c.steps.map(s => `<li>${s}</li>`).join("")}</ol></td>
+            <td data-label="预期" class="assert">${c.expect}</td>
+            <td data-label="结果">
+              <div class="result">
+                <label><input type="radio" name="${c.id}" value="pass" ${st==="pass"?"checked":""}/> 通过</label>
+                <label><input type="radio" name="${c.id}" value="fail" ${st==="fail"?"checked":""}/> 失败</label>
+                <label><input type="radio" name="${c.id}" value="" ${!st?"checked":""}/> 未测</label>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+        app.appendChild(section);
+      });
+
+      document.getElementById("totalChip").textContent = `显示 ${shown} / 共 ${allCases().length}`;
+      document.getElementById("passChip").textContent = `通过 ${pass}`;
+      document.getElementById("failChip").textContent = `失败 ${fail}`;
+      document.getElementById("skipChip").textContent = `未测 ${skip}`;
+
+      app.querySelectorAll('input[type="radio"]').forEach(input => {
+        input.addEventListener("change", () => {
+          const map = loadResults();
+          if (input.value) map[input.name] = input.value;
+          else delete map[input.name];
+          saveResults(map);
+          render();
+        });
+      });
+    }
+
+    function initFilters() {
+      const sel = document.getElementById("catFilter");
+      SUITES.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = s.title.replace(/^[一二三四五六七]、/, "");
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", render);
+      document.getElementById("priFilter").addEventListener("change", render);
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        if (confirm("清空本机全部勾选结果？")) {
+          localStorage.removeItem(storageKey);
+          render();
+        }
+      });
+      document.getElementById("exportBtn").addEventListener("click", () => {
+        const results = loadResults();
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          summary: {
+            total: allCases().length,
+            pass: Object.values(results).filter(v => v === "pass").length,
+            fail: Object.values(results).filter(v => v === "fail").length,
+          },
+          results: allCases().map(c => ({
+            id: c.id,
+            title: c.title,
+            suite: c.suiteTitle,
+            priority: c.pri,
+            result: results[c.id] || "untested",
+            expect: c.expect,
+          })),
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `courseagent-test-results-${Date.now()}.json`;
+        a.click();
+      });
+    }
+
+    initFilters();
+    render();
+  </script>
+</body>
+</html>

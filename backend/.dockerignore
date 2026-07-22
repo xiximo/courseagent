@@ -1,0 +1,18 @@
+.venv
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+.env.*
+!.env.example
+!.env.docker.example
+data
+tests
+*.egg-info
+models/**/.cache
+**/.DS_Store
+# 轻量 Dockerfile 不需要；Dockerfile.ml 会显式 COPY wheels/
+# 若 wheels 为空目录也可保留
