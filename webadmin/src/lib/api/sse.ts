@@ -5,6 +5,7 @@ export type SseHandlers = {
   onResult?: (data: unknown) => void
   onReport?: (data: unknown) => void
   onDelta?: (data: { text?: string }) => void
+  onTrace?: (data: unknown) => void
   onDone?: (data: unknown) => void
   onPing?: (data: unknown) => void
   onError?: (data: {
@@ -41,6 +42,7 @@ function parseSseChunk(chunk: string, handlers: SseHandlers): void {
     if (event === 'thinking') handlers.onThinking?.(payload)
     else if (event === 'result') handlers.onResult?.(payload)
     else if (event === 'report') handlers.onReport?.(payload)
+    else if (event === 'trace') handlers.onTrace?.(payload)
     else if (event === 'delta')
       handlers.onDelta?.(payload as { text?: string })
     else if (event === 'done') handlers.onDone?.(payload)

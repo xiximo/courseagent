@@ -1,0 +1,87 @@
+name: courseagent
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-docker.m.daocloud.io/library/postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: course
+    volumes:
+      - courseagent-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d course"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - courseagent
+
+  backend:
+    image: courseagent-backend:ml
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.ml
+    restart: unless-stopped
+    env_file:
+      - backend.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/course
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://${DOMAIN}}
+      JWT_SECRET: ${JWT_SECRET:?请在 deploy/.env 设置 JWT_SECRET}
+      EMBEDDING_ENABLED: "true"
+      EMBEDDING_MODEL: models/bge-small-zh-v1.5
+    volumes:
+      - courseagent-data:/app/data
+      - ${EMBEDDING_MODELS_DIR:-./models}:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      courseagent:
+        aliases:
+          - courseagent-backend
+
+  web:
+    image: courseagent-web:latest
+    build:
+      context: ../webadmin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_UPSTREAM: courseagent-backend:8080
+    depends_on:
+      - backend
+    networks:
+      - courseagent
+
+  caddy:
+    image: ${CADDY_IMAGE:-docker.m.daocloud.io/library/caddy:2.9-alpine}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?请在 deploy/.env 设置 DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?请在 deploy/.env 设置 ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - backend
+    networks:
+      - courseagent
+
+networks:
+  courseagent:
+    name: courseagent
+
+volumes:
+  courseagent-pg:
+  courseagent-data:
+  caddy-data:
+  caddy-config:

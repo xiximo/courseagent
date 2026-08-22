@@ -16,7 +16,7 @@ export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
       className={cn('size-6 text-blue-600 dark:text-blue-400', className)}
       {...props}
     >
-      <title>企业标准AI智能平台</title>
+      <title>企业智能体平台</title>
       <path d='M9 3h4l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3z' />
       <path d='M13 3v3h3' />
       <path d='M8 11h6' />

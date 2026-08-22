@@ -6,11 +6,9 @@ $WheelDir = Join-Path $Root "backend\wheels"
 $ScriptSh = Join-Path $PSScriptRoot "download-ml-wheels.sh"
 New-Item -ItemType Directory -Force -Path $WheelDir | Out-Null
 
-$PyImage = "docker.1ms.run/library/python:3.12-slim-bookworm"
+$PyImage = "python:3.12-slim"
 
-Write-Host "==> docker pull $PyImage"
-docker pull $PyImage
-if ($LASTEXITCODE -ne 0) { throw "docker pull failed" }
+Write-Host "==> using local $PyImage (no pull)"
 
 Write-Host "==> download wheels into backend\wheels (this can take a long time)"
 docker run --rm `

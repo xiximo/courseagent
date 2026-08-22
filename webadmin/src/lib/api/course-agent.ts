@@ -1,22 +1,25 @@
 import { apiFetch, apiFetchForm, readEnvelope, ApiClientError } from './client'
 import { isDevMock } from '@/lib/is-dev-mock'
 import type {
+  AttachmentExtractedText,
   CourseAgentConfig,
   CourseAgentKnowledgeBase,
   CourseAgentLeadDetail,
   CourseAgentLeadSummary,
   CourseAgentModelProfile,
   CourseAgentSession,
+  CourseAgentSessionSummary,
   CourseAgentSummary,
+  CourseAgentTraceEvent,
+  AdminSessionDetail,
+  AdminUserSessionGroup,
   CourseMaterialDocument,
-  AttachmentExtractedText,
   CreateCourseAgentInput,
 } from '@/features/course-agent/data/types'
 import {
   mockCreateCourseAgent,
   mockDeleteCourseAgent,
   mockCreateCourseAgentSession,
-  mockCreatePreviewSession,
   mockCreateKnowledgeBase,
   mockCreateModel,
   mockDeleteKnowledgeBase,
@@ -31,10 +34,11 @@ import {
   mockListModels,
   mockListPlatformKnowledgeBases,
   mockListPlatformModels,
+  mockListCourseAgentSessions,
+  mockGetCourseAgentSession,
   mockResetCourseAgentSession,
-  mockResetPreviewSession,
+  mockDeleteCourseAgentSession,
   mockSendCourseAgentMessage,
-  mockSendPreviewMessage,
   mockUpdateCourseAgent,
   mockUpdateKnowledgeBase,
   mockUpdateModel,
@@ -89,6 +93,22 @@ export async function setDefaultCourseAgent(
   return readEnvelope<CourseAgentConfig>(res)
 }
 
+export async function runCourseAgentSchedule(
+  agentId: string
+): Promise<CourseAgentConfig> {
+  if (isDevMock()) {
+    const { mockRunCourseAgentSchedule } = await import(
+      '@/features/course-agent/mock/course-agent-handlers'
+    )
+    return mockRunCourseAgentSchedule(agentId)
+  }
+  const res = await apiFetch(
+    'POST',
+    `/api/v1/course-agents/${agentId}/schedule/run`
+  )
+  return readEnvelope<CourseAgentConfig>(res)
+}
+
 export async function getPublicAttachmentExtractedText(
   attachmentId: string
 ): Promise<AttachmentExtractedText> {
@@ -97,87 +117,9 @@ export async function getPublicAttachmentExtractedText(
   }
   const res = await apiFetch(
     'GET',
-    `/api/v1/course-agent/attachments/${attachmentId}/extracted-text`,
-    undefined,
-    { skipAuth: true }
+    `/api/v1/course-agent/attachments/${attachmentId}/extracted-text`
   )
   return readEnvelope(res)
-}
-
-export async function createPreviewSession(
-  agentId: string
-): Promise<CourseAgentSession> {
-  if (isDevMock()) return mockCreatePreviewSession(agentId)
-  const res = await apiFetch(
-    'POST',
-    `/api/v1/course-agents/${agentId}/preview/sessions`
-  )
-  return readEnvelope<CourseAgentSession>(res)
-}
-
-export async function sendPreviewMessage(
-  sessionId: string,
-  content: string
-): Promise<CourseAgentSession> {
-  if (isDevMock()) return mockSendPreviewMessage(sessionId, content)
-  const res = await apiFetch(
-    'POST',
-    `/api/v1/course-agent/preview/sessions/${sessionId}/messages`,
-    { content }
-  )
-  return readEnvelope<CourseAgentSession>(res)
-}
-
-export async function sendPreviewMessageStream(
-  sessionId: string,
-  content: string,
-  handlers: {
-    onDelta?: (text: string) => void
-    onDone?: (session: CourseAgentSession) => void
-  }
-): Promise<CourseAgentSession> {
-  if (isDevMock()) {
-    const session = await mockSendPreviewMessage(sessionId, content)
-    const last = [...session.messages].reverse().find((m) => m.role === 'assistant')
-    if (last?.content) handlers.onDelta?.(last.content)
-    handlers.onDone?.(session)
-    return session
-  }
-
-  let doneSession: CourseAgentSession | null = null
-  const { postSse } = await import('./sse')
-  await postSse(
-    `/api/v1/course-agent/preview/sessions/${sessionId}/messages/stream`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    },
-    {
-      onDelta: (data) => {
-        if (data.text) handlers.onDelta?.(data.text)
-      },
-      onDone: (data) => {
-        doneSession = data as CourseAgentSession
-        handlers.onDone?.(doneSession)
-      },
-    }
-  )
-  if (!doneSession) {
-    throw new ApiClientError('STREAM_INCOMPLETE', '流式回复未正常结束')
-  }
-  return doneSession
-}
-
-export async function resetPreviewSession(
-  sessionId: string
-): Promise<CourseAgentSession> {
-  if (isDevMock()) return mockResetPreviewSession(sessionId)
-  const res = await apiFetch(
-    'POST',
-    `/api/v1/course-agent/preview/sessions/${sessionId}/reset`
-  )
-  return readEnvelope<CourseAgentSession>(res)
 }
 
 export async function createCourseAgentSession(
@@ -186,11 +128,42 @@ export async function createCourseAgentSession(
   if (isDevMock()) return mockCreateCourseAgentSession(agentId)
   const res = await apiFetch(
     'POST',
-    `/api/v1/course-agents/${agentId}/sessions`,
-    undefined,
-    { skipAuth: true }
+    `/api/v1/course-agents/${agentId}/sessions`
   )
   return readEnvelope<CourseAgentSession>(res)
+}
+
+export async function listCourseAgentSessions(
+  agentId: string
+): Promise<CourseAgentSessionSummary[]> {
+  if (isDevMock()) return mockListCourseAgentSessions(agentId)
+  const res = await apiFetch(
+    'GET',
+    `/api/v1/course-agents/${agentId}/sessions`
+  )
+  return readEnvelope<CourseAgentSessionSummary[]>(res)
+}
+
+export async function getCourseAgentSession(
+  sessionId: string
+): Promise<CourseAgentSession> {
+  if (isDevMock()) return mockGetCourseAgentSession(sessionId)
+  const res = await apiFetch(
+    'GET',
+    `/api/v1/course-agent/sessions/${sessionId}`
+  )
+  return readEnvelope<CourseAgentSession>(res)
+}
+
+export async function deleteCourseAgentSession(
+  sessionId: string
+): Promise<{ message: string }> {
+  if (isDevMock()) return mockDeleteCourseAgentSession(sessionId)
+  const res = await apiFetch(
+    'DELETE',
+    `/api/v1/course-agent/sessions/${sessionId}`
+  )
+  return readEnvelope<{ message: string }>(res)
 }
 
 export async function sendCourseAgentMessage(
@@ -201,8 +174,7 @@ export async function sendCourseAgentMessage(
   const res = await apiFetch(
     'POST',
     `/api/v1/course-agent/sessions/${sessionId}/messages`,
-    { content },
-    { skipAuth: true }
+    { content }
   )
   return readEnvelope<CourseAgentSession>(res)
 }
@@ -212,13 +184,36 @@ export async function sendCourseAgentMessageStream(
   content: string,
   handlers: {
     onDelta?: (text: string) => void
+    onTrace?: (event: CourseAgentTraceEvent) => void
     onDone?: (session: CourseAgentSession) => void
   }
 ): Promise<CourseAgentSession> {
   if (isDevMock()) {
+    handlers.onTrace?.({
+      id: `trace-turn-${Date.now()}`,
+      type: 'turn',
+      title: '开始处理用户问题',
+      detail: content,
+      status: 'running',
+      createdAt: new Date().toISOString(),
+    })
+    handlers.onTrace?.({
+      id: `trace-think-${Date.now()}`,
+      type: 'thinking',
+      title: '第 1 轮：模型规划中',
+      status: 'done',
+      createdAt: new Date().toISOString(),
+    })
     const session = await mockSendCourseAgentMessage(sessionId, content)
     const last = [...session.messages].reverse().find((m) => m.role === 'assistant')
     if (last?.content) handlers.onDelta?.(last.content)
+    handlers.onTrace?.({
+      id: `trace-reply-${Date.now()}`,
+      type: 'reply',
+      title: '回答完成',
+      status: 'done',
+      createdAt: new Date().toISOString(),
+    })
     handlers.onDone?.(session)
     return session
   }
@@ -231,11 +226,14 @@ export async function sendCourseAgentMessageStream(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
-      skipAuth: true,
     },
     {
       onDelta: (data) => {
         if (data.text) handlers.onDelta?.(data.text)
+      },
+      onTrace: (data) => {
+        const event = data as CourseAgentTraceEvent
+        if (event?.id && event?.title) handlers.onTrace?.(event)
       },
       onDone: (data) => {
         doneSession = data as CourseAgentSession
@@ -255,9 +253,7 @@ export async function resetCourseAgentSession(
   if (isDevMock()) return mockResetCourseAgentSession(sessionId)
   const res = await apiFetch(
     'POST',
-    `/api/v1/course-agent/sessions/${sessionId}/reset`,
-    undefined,
-    { skipAuth: true }
+    `/api/v1/course-agent/sessions/${sessionId}/reset`
   )
   return readEnvelope<CourseAgentSession>(res)
 }
@@ -276,9 +272,7 @@ export async function getPublicAgentConfig(
   if (isDevMock()) return mockGetPublicAgentConfig(agentId)
   const res = await apiFetch(
     'GET',
-    `/api/v1/course-agents/${agentId}/public-config`,
-    undefined,
-    { skipAuth: true }
+    `/api/v1/course-agents/${agentId}/public-config`
   )
   return readEnvelope<PublicAgentConfig>(res)
 }
@@ -470,6 +464,39 @@ export async function listCourseAgentLeads(params?: {
     `/api/v1/course-agent/leads${qs ? `?${qs}` : ''}`
   )
   return readEnvelope<CourseAgentLeadSummary[]>(res)
+}
+
+export async function listAdminSessionRecords(params?: {
+  agentId?: string
+}): Promise<AdminUserSessionGroup[]> {
+  const query = new URLSearchParams()
+  if (params?.agentId) query.set('agent_id', params.agentId)
+  const qs = query.toString()
+  const res = await apiFetch(
+    'GET',
+    `/api/v1/course-agent/session-records${qs ? `?${qs}` : ''}`
+  )
+  return readEnvelope<AdminUserSessionGroup[]>(res)
+}
+
+export async function getAdminSessionRecord(
+  sessionId: string
+): Promise<AdminSessionDetail> {
+  const res = await apiFetch(
+    'GET',
+    `/api/v1/course-agent/session-records/${sessionId}`
+  )
+  return readEnvelope<AdminSessionDetail>(res)
+}
+
+export async function deleteAdminSessionRecord(
+  sessionId: string
+): Promise<{ message?: string }> {
+  const res = await apiFetch(
+    'DELETE',
+    `/api/v1/course-agent/session-records/${sessionId}`
+  )
+  return readEnvelope<{ message?: string }>(res)
 }
 
 export async function getCourseAgentLead(

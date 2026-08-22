@@ -1,4 +1,11 @@
 const SIGN_IN_PREFIX = '/sign-in'
+const BLOCKED_AUTH_PATHS = new Set(['/403', '/401', '/404', '/500'])
+
+function isBlockedAuthPath(path: string): boolean {
+  const base = path.split('?')[0] ?? path
+  if (base.startsWith(SIGN_IN_PREFIX)) return true
+  return BLOCKED_AUTH_PATHS.has(base)
+}
 
 function isSafeInternalPath(path: string): boolean {
   return path.startsWith('/') && !path.startsWith('//')
@@ -27,7 +34,7 @@ export function resolveAuthRedirect(
   if (!trimmed) return fallback
 
   if (isSafeInternalPath(trimmed)) {
-    return trimmed.startsWith(SIGN_IN_PREFIX) ? fallback : trimmed
+    return isBlockedAuthPath(trimmed) ? fallback : trimmed
   }
 
   try {
@@ -47,7 +54,7 @@ export function resolveAuthRedirect(
       url.search,
       url.hash
     )
-    return path.startsWith(SIGN_IN_PREFIX) ? fallback : path
+    return isBlockedAuthPath(path) ? fallback : path
   } catch {
     return fallback
   }

@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AgentPreviewPanel } from './agent-preview-panel'
 import {
   WorkflowCanvas,
   type CanvasSelection,
@@ -24,6 +23,7 @@ import type {
   CourseAgentKnowledgeBase,
   CourseAgentModelProfile,
 } from '../data/types'
+import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
 import {
   collectBoundKnowledgeBaseIds,
   createDefaultWorkflowGraph,
@@ -62,6 +62,7 @@ export function WorkflowAgentConfigWorkspace({
   })
   const [saving, setSaving] = useState(false)
   const [rightTab, setRightTab] = useState('inspect')
+  const invalidateAgents = useInvalidateCourseAgents()
 
   useEffect(() => {
     setName(config.name)
@@ -130,6 +131,7 @@ export function WorkflowAgentConfigWorkspace({
         },
       })
       onSaved(updated)
+      invalidateAgents()
       toast.success('流程配置已保存')
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '保存失败')
@@ -242,10 +244,9 @@ export function WorkflowAgentConfigWorkspace({
             onValueChange={setRightTab}
             className='flex min-h-0 flex-1 flex-col'
           >
-            <TabsList className='m-3 grid grid-cols-3'>
+            <TabsList className='m-3 grid grid-cols-2'>
               <TabsTrigger value='inspect'>配置</TabsTrigger>
               <TabsTrigger value='bind'>模型</TabsTrigger>
-              <TabsTrigger value='preview'>预览</TabsTrigger>
             </TabsList>
 
             <TabsContent value='inspect' className='min-h-0 flex-1 px-3 pb-3'>
@@ -328,27 +329,6 @@ export function WorkflowAgentConfigWorkspace({
                   </div>
                 </div>
               </ScrollArea>
-            </TabsContent>
-
-            <TabsContent value='preview' className='min-h-0 flex-1 px-2 pb-2'>
-              <div className='mb-2 flex justify-end'>
-                <Button size='sm' variant='outline' asChild>
-                  <a
-                    href={`/admin/course-agents/${config.agentId}/preview`}
-                    target='_blank'
-                    rel='noreferrer'
-                  >
-                    打开独立预览页
-                  </a>
-                </Button>
-              </div>
-              <div className='h-[calc(100vh-340px)] overflow-hidden rounded-lg border'>
-                <AgentPreviewPanel
-                  agentId={config.agentId}
-                  agentName={name || config.name}
-                  menuButtons={getEntryWelcome(graph).menuButtons}
-                />
-              </div>
             </TabsContent>
           </Tabs>
         </div>

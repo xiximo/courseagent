@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Bot, ExternalLink, Plus, Star, Trash2 } from 'lucide-react'
+import { Bot, MessageSquare, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
 import {
   deleteCourseAgent,
   listCourseAgents,
+  runCourseAgentSchedule,
   setDefaultCourseAgent,
 } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
@@ -26,13 +27,17 @@ import {
   agentTypeLabel,
   CreateAgentDialog,
 } from '../components/create-agent-dialog'
-import { getMockPublicChatUrl } from '../mock/course-agent-handlers'
+import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
+import {
+  isAgentVisibleInChat,
+  isScheduledHarnessAgent,
+} from '../lib/agent-schedule'
 import type { CourseAgentSummary } from '../data/types'
 
 function statusLabel(status: CourseAgentSummary['status']) {
   switch (status) {
     case 'active':
-      return '运行中'
+      return '已发布'
     case 'draft':
       return '草稿'
     case 'disabled':
@@ -64,6 +69,8 @@ export function CourseAgentsListPage() {
   )
   const [deleting, setDeleting] = useState(false)
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null)
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null)
+  const invalidateAgents = useInvalidateCourseAgents()
 
   const loadAgents = useCallback(async () => {
     setLoading(true)
@@ -88,11 +95,26 @@ export function CourseAgentsListPage() {
       const result = await deleteCourseAgent(deleteTarget.agentId)
       setDeleteTarget(null)
       toast.success(result.message || 'Agent 已删除')
+      invalidateAgents()
       await loadAgents()
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '删除失败')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleRunSchedule = async (agent: CourseAgentSummary) => {
+    setRunningScheduleId(agent.agentId)
+    try {
+      const updated = await runCourseAgentSchedule(agent.agentId)
+      toast.success(updated.schedule?.lastRunNote || `「${agent.name}」已执行`)
+      invalidateAgents()
+      await loadAgents()
+    } catch (e) {
+      toast.error(e instanceof ApiClientError ? e.message : '执行失败')
+    } finally {
+      setRunningScheduleId(null)
     }
   }
 
@@ -102,6 +124,7 @@ export function CourseAgentsListPage() {
     try {
       await setDefaultCourseAgent(agent.agentId)
       toast.success(`已将「${agent.name}」设为默认`)
+      invalidateAgents()
       await loadAgents()
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '设置默认失败')
@@ -111,6 +134,7 @@ export function CourseAgentsListPage() {
   }
 
   const activeCount = agents.filter((a) => a.status === 'active').length
+  const draftCount = agents.filter((a) => a.status === 'draft').length
 
   return (
     <>
@@ -120,7 +144,7 @@ export function CourseAgentsListPage() {
           <div>
             <h2 className='text-2xl font-bold tracking-tight'>Agent</h2>
             <p className='text-muted-foreground'>
-              管理 Agent：模型、知识库与开放接入配置
+              管理 Agent：模型、知识库与对话配置
             </p>
           </div>
           <Button
@@ -146,7 +170,7 @@ export function CourseAgentsListPage() {
           </Card>
           <Card>
             <CardHeader className='pb-2'>
-              <CardTitle className='text-sm font-medium'>运行中</CardTitle>
+              <CardTitle className='text-sm font-medium'>已发布</CardTitle>
             </CardHeader>
             <CardContent>
               <div className='text-2xl font-bold'>{activeCount}</div>
@@ -154,12 +178,10 @@ export function CourseAgentsListPage() {
           </Card>
           <Card>
             <CardHeader className='pb-2'>
-              <CardTitle className='text-sm font-medium'>公开对话页</CardTitle>
+              <CardTitle className='text-sm font-medium'>草稿</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className='text-muted-foreground text-sm'>
-                C 端路径 <code className='text-xs'>/chat/:agentId</code>，无需登录
-              </p>
+              <div className='text-2xl font-bold'>{draftCount}</div>
             </CardContent>
           </Card>
         </div>
@@ -186,6 +208,9 @@ export function CourseAgentsListPage() {
                       <Badge variant='outline'>
                         {agentTypeLabel(agent.agentType ?? 'workflow')}
                       </Badge>
+                      {agent.scheduleEnabled ? (
+                        <Badge variant='secondary'>定时</Badge>
+                      ) : null}
                     </div>
                     <CardDescription className='mt-1 line-clamp-2'>
                       {agent.description}
@@ -204,15 +229,29 @@ export function CourseAgentsListPage() {
                       配置管理
                     </Link>
                   </Button>
-                  <Button size='sm' variant='outline' asChild>
-                    <Link
-                      to='/admin/course-agents/$agentId/preview'
-                      params={{ agentId: agent.agentId }}
-                      target='_blank'
+                  {isScheduledHarnessAgent(agent) ? (
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      disabled={!canConfig || runningScheduleId === agent.agentId}
+                      onClick={() => void handleRunSchedule(agent)}
                     >
-                      预览对话
-                    </Link>
-                  </Button>
+                      <Play className='mr-1 size-3.5' />
+                      {runningScheduleId === agent.agentId ? '执行中…' : '立即执行'}
+                    </Button>
+                  ) : null}
+                  {isAgentVisibleInChat(agent) ? (
+                    <Button size='sm' asChild>
+                      <Link
+                        to='/admin/chat/$agentId'
+                        params={{ agentId: agent.agentId }}
+                      >
+                        <MessageSquare className='mr-1 size-3.5' />
+                        进入对话
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     type='button'
                     size='sm'
@@ -229,18 +268,6 @@ export function CourseAgentsListPage() {
                     />
                     {agent.isDefault ? '当前默认' : '设为默认'}
                   </Button>
-                  {agent.status === 'active' ? (
-                    <Button size='sm' variant='ghost' asChild>
-                      <a
-                        href={getMockPublicChatUrl(agent.agentId)}
-                        target='_blank'
-                        rel='noreferrer'
-                      >
-                        <ExternalLink className='mr-1 size-3.5' />
-                        公开页
-                      </a>
-                    </Button>
-                  ) : null}
                   <Button
                     type='button'
                     size='sm'
@@ -263,6 +290,7 @@ export function CourseAgentsListPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={(agentId) => {
+          invalidateAgents()
           void loadAgents()
           void navigate({
             to: '/admin/course-agents/$agentId',

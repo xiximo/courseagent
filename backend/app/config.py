@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     doubao_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     llm_timeout_seconds: int = 120
     qa_retrieval_top_k: int = 8
+    harness_scheduler_enabled: bool = True
+    harness_scheduler_poll_seconds: int = 30
 
     @model_validator(mode="after")
     def normalize_embedding_config(self) -> Self:

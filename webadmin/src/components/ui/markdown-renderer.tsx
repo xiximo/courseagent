@@ -2,6 +2,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 import { CopyButton } from '@/components/ui/copy-button'
+import { prepareChatMarkdown } from './prepare-chat-markdown'
 
 interface MarkdownRendererProps {
   children: string
@@ -11,11 +12,11 @@ export function MarkdownRenderer({ children }: MarkdownRendererProps) {
   return (
     <div className='space-y-3'>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
         // react-markdown Components 与自定义 withClass 签名略有差异
         components={COMPONENTS as never}
       >
-        {children}
+        {prepareChatMarkdown(children)}
       </Markdown>
     </div>
   )

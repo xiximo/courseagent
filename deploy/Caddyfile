@@ -1,0 +1,25 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# API / SSE 不走 gzip，避免流式对话被缓冲
+	handle /api/* {
+		reverse_proxy backend:8080 {
+			flush_interval -1
+			transport http {
+				read_timeout 1h
+				write_timeout 1h
+			}
+		}
+	}
+
+	handle /health {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		encode gzip
+		reverse_proxy web:80
+	}
+}

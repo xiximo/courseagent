@@ -6,6 +6,7 @@ import type {
   CourseAgentKnowledgeBase,
   CourseAgentModelProfile,
   CourseAgentSession,
+  CourseAgentSessionSummary,
   CourseAgentSummary,
   CourseMaterialDocument,
   CreateCourseAgentInput,
@@ -15,6 +16,13 @@ import {
   createWelcomeMessage,
   processCourseAgentMessage,
 } from '../lib/state-machine'
+import {
+  DEFAULT_REACT_MENU_BUTTONS,
+  DEFAULT_REACT_PROHIBITION,
+  DEFAULT_REACT_SOUL,
+  DEFAULT_REACT_WELCOME,
+} from '../lib/react-agent-defaults'
+import { DEFAULT_AGENT_SCHEDULE } from '../lib/agent-schedule'
 import { withMockDelay } from '@/lib/is-dev-mock'
 import { ApiClientError } from '@/lib/api/client'
 
@@ -50,9 +58,9 @@ const MOCK_AGENTS: CourseAgentConfig[] = [
     },
     conversation: {
       welcomeMessage:
-        '您好！我是 AI 课程顾问，可为您提供学生夏令营、教师培训或 OPC 平台服务咨询。',
+        '您好，请问有什么可以帮您？',
       systemPrompt: '',
-      menuButtons: ['学生课程', '教师培训', '平台服务'],
+      menuButtons: [],
       resetMessage: '已为您重新开始。',
       emptyInputMessage: '请输入您的问题。',
       tooLongMessage: '输入过长，请精简后重新发送（限 500 字）。',
@@ -97,7 +105,19 @@ const MOCK_AGENTS: CourseAgentConfig[] = [
 ]
 
 const sessions = new Map<string, CourseAgentSession>()
-const previewSessions = new Map<string, CourseAgentSession>()
+const sessionOwners = new Map<string, string | null>()
+
+function currentMockUserId(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem('taixing_auth_user')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { id?: string }
+    return parsed.id ?? null
+  } catch {
+    return null
+  }
+}
 
 const mockDocuments = new Map<string, CourseMaterialDocument[]>()
 
@@ -172,25 +192,18 @@ function findAgent(agentId: string): CourseAgentConfig {
 
 export async function mockListCourseAgents(): Promise<CourseAgentSummary[]> {
   return withMockDelay(
-    MOCK_AGENTS.map(
-      ({
-        agentId,
-        name,
-        description,
-        status,
-        agentType,
-        isDefault,
-        updatedAt,
-      }) => ({
-        agentId,
-        name,
-        description,
-        status,
-        agentType,
-        isDefault: Boolean(isDefault),
-        updatedAt,
-      })
-    )
+    MOCK_AGENTS.map((agent) => ({
+      agentId: agent.agentId,
+      name: agent.name,
+      description: agent.description,
+      status: agent.status,
+      agentType: agent.agentType,
+      isDefault: Boolean(agent.isDefault),
+      visibleInChat: agent.schedule?.visibleInChat !== false,
+      runMode: agent.schedule?.runMode ?? 'chat',
+      scheduleEnabled: Boolean(agent.schedule?.enabled),
+      updatedAt: agent.updatedAt,
+    }))
   )
 }
 
@@ -242,18 +255,27 @@ function buildMockAgentConfig(body: CreateCourseAgentInput): CourseAgentConfig {
         body.agentType === 'basic'
           ? `您好！我是${body.name}，可直接向我提问。`
           : body.agentType === 'autonomous'
-            ? `您好！我是${body.name}，将自主理解您的需求并给出建议。`
+            ? DEFAULT_REACT_WELCOME
             : `您好！我是${body.name}，请问需要哪类帮助？`,
       systemPrompt: '',
       menuButtons:
-        body.agentType === 'workflow'
-          ? ['学生课程', '教师培训', '平台服务']
-          : [],
+        body.agentType === 'autonomous' ? [...DEFAULT_REACT_MENU_BUTTONS] : [],
       resetMessage: '已为您重新开始。',
       emptyInputMessage: '请输入您的问题。',
       tooLongMessage: '输入过长，请精简后重新发送（限 500 字）。',
       outOfScopeMessage: '抱歉，我仅提供课程与平台服务咨询。',
     },
+    reactConfig:
+      body.agentType === 'autonomous'
+        ? {
+            soul: DEFAULT_REACT_SOUL,
+            prohibitionRules: DEFAULT_REACT_PROHIBITION,
+            maxToolRounds: 5,
+            tools: [],
+          }
+        : undefined,
+    schedule:
+      body.agentType === 'autonomous' ? { ...DEFAULT_AGENT_SCHEDULE } : undefined,
     updatedAt: new Date().toISOString(),
   }
   return ensureAgentModels({
@@ -348,10 +370,44 @@ export async function mockUpdateCourseAgent(
   return withMockDelay(MOCK_AGENTS[idx]!)
 }
 
+export async function mockRunCourseAgentSchedule(
+  agentId: string
+): Promise<CourseAgentConfig> {
+  const idx = MOCK_AGENTS.findIndex((a) => a.agentId === agentId)
+  if (idx < 0) throw new ApiClientError('NOT_FOUND', 'Agent 不存在')
+  const now = new Date().toISOString()
+  const current = MOCK_AGENTS[idx]!
+  MOCK_AGENTS[idx] = {
+    ...current,
+    schedule: {
+      ...(current.schedule ?? {
+        enabled: true,
+        intervalHours: 2,
+        runMode: 'scheduled',
+        visibleInChat: false,
+        target: 'all_users',
+        onlyIfNewMessages: true,
+        lookbackHours: 24,
+        taskPrompt: '',
+      }),
+      lastRunAt: now,
+      lastRunNote: '（模拟）已触发定时画像刷新',
+    },
+    updatedAt: now,
+  }
+  return withMockDelay(MOCK_AGENTS[idx]!)
+}
+
 export async function mockCreateCourseAgentSession(
   agentId: string
 ): Promise<CourseAgentSession> {
-  findAgent(agentId)
+  const agent = findAgent(agentId)
+  if (agent.status !== 'active') {
+    throw new ApiClientError(
+      'AGENT_INACTIVE',
+      'Agent 未启用（当前为草稿/停用）。请先将状态设为启用后再进行对话。'
+    )
+  }
   const id = `cas-${Date.now()}`
   const session: CourseAgentSession = {
     id,
@@ -363,94 +419,55 @@ export async function mockCreateCourseAgentSession(
     updatedAt: new Date().toISOString(),
   }
   sessions.set(id, session)
+  sessionOwners.set(id, currentMockUserId())
   return withMockDelay(session, 400)
 }
 
-export async function mockCreatePreviewSession(
+export async function mockListCourseAgentSessions(
   agentId: string
-): Promise<CourseAgentSession> {
+): Promise<CourseAgentSessionSummary[]> {
   findAgent(agentId)
-  const id = `cap-${Date.now()}`
-  const session: CourseAgentSession = {
-    id,
-    agentId,
-    title: '对话预览',
-    messages: [createWelcomeMessage()],
-    state: { ...createInitialSessionState(), step: 'preview' },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  previewSessions.set(id, session)
-  return withMockDelay(session, 400)
+  const ownerId = currentMockUserId()
+  const items = [...sessions.values()]
+    .filter((s) => s.agentId === agentId && sessionOwners.get(s.id) === ownerId)
+    .filter((s) => s.messages.some((m) => m.role === 'user'))
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+    .map((s) => ({
+      id: s.id,
+      agentId: s.agentId,
+      title: s.title,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }))
+  return withMockDelay(items, 200)
 }
 
-async function mockPreviewReply(content: string): Promise<string> {
-  const search = await mockSearchKnowledgeChunks({ query: content, mode: 'hybrid' })
-  const hits = search.hits.slice(0, 2)
-  if (hits.length === 0) {
-    return '现有资料中未找到相关信息。请先在知识库上传文档并完成索引。'
-  }
-  const summary = hits.map((h) => h.content).join(' ')
-  return `根据知识库资料：${summary}`
-}
-
-export async function mockSendPreviewMessage(
-  sessionId: string,
-  content: string
-): Promise<CourseAgentSession> {
-  const session = previewSessions.get(sessionId)
-  if (!session) throw new ApiClientError('NOT_FOUND', '会话不存在')
-
-  const trimmed = content.trim()
-  if (!trimmed) throw new ApiClientError('EMPTY_INPUT', '请输入您的问题。')
-
-  const now = new Date().toISOString()
-  const userMsg = {
-    id: `msg-u-${Date.now()}`,
-    role: 'user' as const,
-    content: trimmed,
-    createdAt: now,
-  }
-
-  const search = await mockSearchKnowledgeChunks({ query: trimmed, mode: 'hybrid' })
-  const citations = search.hits.slice(0, 2).map((hit) => ({
-    document: hit.fileName ?? '资料',
-    chapter: hit.positionLabel ?? '相关章节',
-    attachmentId: hit.attachmentId,
-    chunkId: hit.chunkId,
-  }))
-  const reply = await mockPreviewReply(trimmed)
-  const assistantMsg = {
-    id: `msg-a-${Date.now()}`,
-    role: 'assistant' as const,
-    content: reply,
-    createdAt: new Date().toISOString(),
-    citations,
-  }
-
-  const updated: CourseAgentSession = {
-    ...session,
-    title: session.title === '对话预览' && trimmed.length <= 40 ? trimmed : session.title,
-    messages: [...session.messages, userMsg, assistantMsg],
-    updatedAt: new Date().toISOString(),
-  }
-  previewSessions.set(sessionId, updated)
-  return withMockDelay(updated, 800)
-}
-
-export async function mockResetPreviewSession(
+export async function mockGetCourseAgentSession(
   sessionId: string
 ): Promise<CourseAgentSession> {
-  const session = previewSessions.get(sessionId)
-  if (!session) throw new ApiClientError('NOT_FOUND', '会话不存在')
-  const updated: CourseAgentSession = {
-    ...session,
-    title: '对话预览',
-    messages: [createWelcomeMessage()],
-    updatedAt: new Date().toISOString(),
+  const session = sessions.get(sessionId)
+  const ownerId = sessionOwners.get(sessionId)
+  const viewerId = currentMockUserId()
+  if (!session || ownerId !== viewerId) {
+    throw new ApiClientError('NOT_FOUND', '会话不存在')
   }
-  previewSessions.set(sessionId, updated)
-  return withMockDelay(updated, 400)
+  return withMockDelay(session, 200)
+}
+
+export async function mockDeleteCourseAgentSession(
+  sessionId: string
+): Promise<{ message: string }> {
+  const ownerId = sessionOwners.get(sessionId)
+  const viewerId = currentMockUserId()
+  if (!sessions.has(sessionId) || ownerId !== viewerId) {
+    throw new ApiClientError('NOT_FOUND', '会话不存在')
+  }
+  sessions.delete(sessionId)
+  sessionOwners.delete(sessionId)
+  return withMockDelay({ message: '会话已删除' }, 200)
 }
 
 export async function mockSendCourseAgentMessage(
@@ -458,7 +475,11 @@ export async function mockSendCourseAgentMessage(
   content: string
 ): Promise<CourseAgentSession> {
   const session = sessions.get(sessionId)
-  if (!session) throw new ApiClientError('NOT_FOUND', '会话不存在')
+  const ownerId = sessionOwners.get(sessionId)
+  const viewerId = currentMockUserId()
+  if (!session || ownerId !== viewerId) {
+    throw new ApiClientError('NOT_FOUND', '会话不存在')
+  }
   const updated = processCourseAgentMessage(session, content)
   sessions.set(sessionId, updated)
   return withMockDelay(updated, 800)
@@ -472,6 +493,12 @@ export async function mockResetCourseAgentSession(
 
 export async function mockGetPublicAgentConfig(agentId: string) {
   const agent = findAgent(agentId)
+  if (agent.status !== 'active') {
+    throw new ApiClientError(
+      'AGENT_INACTIVE',
+      'Agent 未启用（当前为草稿/停用）。请先将状态设为启用后再进行对话。'
+    )
+  }
   return withMockDelay({
     agentId: agent.agentId,
     name: agent.name,
@@ -479,25 +506,6 @@ export async function mockGetPublicAgentConfig(agentId: string) {
     menuButtons: agent.conversation.menuButtons,
     theme: agent.embed.theme,
   })
-}
-
-export function getMockEmbedSnippet(agentId: string): string {
-  const agent = MOCK_AGENTS.find((a) => a.agentId === agentId)
-  const key = agent?.embed.embedKey ?? 'emb_xxx'
-  return `<script
-  src="${typeof window !== 'undefined' ? window.location.origin : 'https://chat.example.com'}/course-agent-widget.v1.js"
-  data-agent-id="${agentId}"
-  data-embed-key="${key}"
-  data-mode="bubble"
-  data-theme="light"
-  async
-></script>`
-}
-
-export function getMockPublicChatUrl(agentId: string): string {
-  const base =
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'
-  return `${base}/chat/${agentId}`
 }
 
 export async function mockCreateKnowledgeBase(body: {

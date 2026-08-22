@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, MessageSquare, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
-import { updateCourseAgent } from '@/lib/api/course-agent'
+import { runCourseAgentSchedule, updateCourseAgent } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
 import { AppPageHeader } from '@/components/app-page-header'
 import { Main } from '@/components/layout/main'
@@ -17,23 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import { agentTypeLabel } from '../components/create-agent-dialog'
 import { BasicAgentConfigWorkspace } from '../components/basic-agent-config-workspace'
-import { EmbedConfigPanel } from '../components/embed-config-panel'
+import { ReactAgentConfigWorkspace } from '../components/react-agent-config-workspace'
 import { WorkflowAgentConfigWorkspace } from '../components/workflow-agent-config-workspace'
 import {
   AgentConfigProvider,
   useAgentConfig,
 } from '../context/agent-config-context'
-import type { CourseAgentEmbedConfig, CourseAgentStatus } from '../data/types'
+import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
+import { isAgentVisibleInChat, isScheduledHarnessAgent } from '../lib/agent-schedule'
+import type { CourseAgentStatus } from '../data/types'
 
 type AgentConfigPageProps = {
   agentId: string
 }
-
-type ConfigPageTab = 'config' | 'embed'
 
 function AgentConfigWorkspace() {
   const { config, canConfig, setConfig } = useAgentConfig()
@@ -59,37 +58,27 @@ function AgentConfigWorkspace() {
     )
   }
 
+  if (config.agentType === 'autonomous') {
+    return (
+      <ReactAgentConfigWorkspace
+        config={config}
+        canConfig={canConfig}
+        onSaved={setConfig}
+      />
+    )
+  }
+
   return (
     <div className='rounded-xl border p-8 text-center'>
-      <p className='text-muted-foreground text-sm'>
-        自主型 Agent 配置页即将扩展；当前可先通过对话预览验证能力。
-      </p>
-      <div className='mt-4 flex flex-wrap justify-center gap-2'>
-        <Button size='sm' asChild>
-          <Link
-            to='/admin/course-agents/$agentId/preview'
-            params={{ agentId: config.agentId }}
-            target='_blank'
-          >
-            对话预览
-          </Link>
-        </Button>
-      </div>
+      <p className='text-muted-foreground text-sm'>未知的智能体类型。</p>
     </div>
   )
 }
 
 function AgentConfigPageBody() {
   const { config, loading, error, canConfig, setConfig } = useAgentConfig()
-  const [pageTab, setPageTab] = useState<ConfigPageTab>('config')
-
-  const isPublished = config?.status === 'active'
-
-  useEffect(() => {
-    if (!isPublished && pageTab === 'embed') {
-      setPageTab('config')
-    }
-  }, [isPublished, pageTab])
+  const [runningSchedule, setRunningSchedule] = useState(false)
+  const invalidateAgents = useInvalidateCourseAgents()
 
   if (loading) {
     return <p className='text-muted-foreground'>加载中…</p>
@@ -105,17 +94,29 @@ function AgentConfigPageBody() {
     try {
       const updated = await updateCourseAgent(config.agentId, { status })
       setConfig(updated)
+      invalidateAgents()
       toast.success(
-        status === 'active' ? '已启用，可用于公开对话页' : '状态已更新'
+        status === 'active'
+          ? '已发布，可在左侧导航进入对话'
+          : '状态已更新'
       )
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '更新状态失败')
     }
   }
 
-  const handleEmbedSave = async (embed: CourseAgentEmbedConfig) => {
-    const updated = await updateCourseAgent(config.agentId, { embed })
-    setConfig(updated)
+  const handleRunSchedule = async () => {
+    setRunningSchedule(true)
+    try {
+      const updated = await runCourseAgentSchedule(config.agentId)
+      setConfig(updated)
+      invalidateAgents()
+      toast.success(updated.schedule?.lastRunNote || '定时任务已执行')
+    } catch (e) {
+      toast.error(e instanceof ApiClientError ? e.message : '执行失败')
+    } finally {
+      setRunningSchedule(false)
+    }
   }
 
   return (
@@ -135,7 +136,7 @@ function AgentConfigPageBody() {
             </Badge>
             <Badge variant={config.status === 'active' ? 'default' : 'secondary'}>
               {config.status === 'active'
-                ? '已启用'
+                ? '已发布'
                 : config.status === 'draft'
                   ? '草稿'
                   : '已停用'}
@@ -158,63 +159,36 @@ function AgentConfigPageBody() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='draft'>草稿</SelectItem>
-                <SelectItem value='active'>启用</SelectItem>
+                <SelectItem value='active'>发布</SelectItem>
                 <SelectItem value='disabled'>停用</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <Button size='sm' variant='outline' asChild>
-            <Link
-              to='/admin/course-agents/$agentId/preview'
-              params={{ agentId: config.agentId }}
-              target='_blank'
+          {isScheduledHarnessAgent(config) ? (
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={!canConfig || runningSchedule}
+              onClick={() => void handleRunSchedule()}
             >
-              预览对话
-            </Link>
-          </Button>
+              <Play className='mr-1 size-4' />
+              {runningSchedule ? '执行中…' : '立即执行'}
+            </Button>
+          ) : null}
+          {isAgentVisibleInChat(config) ? (
+            <Button size='sm' asChild>
+              <Link to='/admin/chat/$agentId' params={{ agentId: config.agentId }}>
+                <MessageSquare className='mr-1 size-4' />
+                进入对话
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      <Tabs
-        value={pageTab}
-        onValueChange={(v) => setPageTab(v as ConfigPageTab)}
-        className='flex min-h-0 flex-1 flex-col gap-4'
-      >
-        <TabsList>
-          <TabsTrigger value='config'>配置</TabsTrigger>
-          {isPublished ? (
-            <TabsTrigger value='embed'>接入配置</TabsTrigger>
-          ) : null}
-        </TabsList>
-
-        <TabsContent
-          value='config'
-          className='mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden'
-          forceMount
-        >
-          <AgentConfigWorkspace />
-        </TabsContent>
-
-        {isPublished ? (
-          <TabsContent
-            value='embed'
-            className='mt-0 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden'
-          >
-            <div className='mb-4 space-y-1'>
-              <h2 className='text-lg font-semibold'>接入配置</h2>
-              <p className='text-muted-foreground text-sm'>
-                公开对话页链接、嵌入代码与域名白名单（仅已启用时可配置）
-              </p>
-            </div>
-            <EmbedConfigPanel
-              agentId={config.agentId}
-              embed={config.embed}
-              readOnly={!canConfig}
-              onSave={handleEmbedSave}
-            />
-          </TabsContent>
-        ) : null}
-      </Tabs>
+      <div className='flex min-h-0 flex-1 flex-col'>
+        <AgentConfigWorkspace />
+      </div>
     </div>
   )
 }

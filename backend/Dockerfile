@@ -1,6 +1,6 @@
 # 轻量后端镜像：不含 torch / sentence-transformers，构建快、不易卡死
 # 向量检索默认关闭（EMBEDDING_ENABLED=false）；需要 RAG 时用 Dockerfile.ml 或服务器单独装 ML 依赖
-ARG PYTHON_IMAGE=docker.1ms.run/library/python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=python:3.12-slim
 FROM ${PYTHON_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

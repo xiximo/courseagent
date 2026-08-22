@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, Header
 from jose import JWTError, jwt
@@ -51,3 +52,22 @@ def get_current_user(
         raise ApiBusinessError("UNAUTHORIZED", "用户不存在或已失效", 401)
 
     return to_auth_profile(user)
+
+
+def get_optional_current_user(
+    authorization: Annotated[str | None, Header()] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = ...,
+    db: Session = Depends(get_db),
+) -> AuthUserProfile | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    return get_current_user(authorization, settings, db)
+
+
+def parse_user_uuid(user: AuthUserProfile | None) -> UUID | None:
+    if user is None:
+        return None
+    try:
+        return UUID(str(user.id))
+    except ValueError:
+        return None

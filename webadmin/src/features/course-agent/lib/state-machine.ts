@@ -254,10 +254,7 @@ export function createInitialSessionState(): CourseAgentSessionState {
 }
 
 export function createWelcomeMessage(): CourseAgentMessage {
-  return assistant(
-    '您好！我是 AI 课程顾问，可为您提供学生夏令营、教师培训或 OPC 平台服务咨询。请问您需要哪类帮助？',
-    { quickActions: ['学生课程', '教师培训', '平台服务'] }
-  )
+  return assistant('您好，请问有什么可以帮您？')
 }
 
 export function processCourseAgentMessage(

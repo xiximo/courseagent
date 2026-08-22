@@ -8,6 +8,7 @@
   "nav": {
     "group": {
       "courseAgent": "Agent",
+      "agentChat": "对话",
       "agentOps": "Agent 运维",
       "digitalEmployees": "数字员工",
       "harness": "Harness 平台",
@@ -43,8 +44,7 @@
       "agentStateMachine": "状态机",
       "agentKnowledge": "知识库",
       "agentConversation": "对话体验",
-      "agentLeads": "客户线索",
-      "agentEmbed": "接入配置",
+      "agentLeads": "用户会话记录",
       "harnessOverview": "平台总览",
       "harnessDefaults": "默认编排",
       "harnessTools": "Tool 目录",
@@ -65,7 +65,7 @@
       "organizations": "组织机构",
       "roles": "角色",
       "dataDictionary": "数据字典管理",
-      "auditManagement": "审计管理",
+      "auditManagement": "日志审计",
       "settingsSection": "设置",
       "profile": "个人资料",
       "account": "账户",
@@ -148,10 +148,10 @@
     "notModified": "内容未修改！"
   },
   "auth": {
-    "platformName": "企业标准AI智能平台",
+    "platformName": "企业智能体平台",
     "platformTagline": "",
     "signInTitle": "登录控制台",
-    "signInDescription": "使用管理员分配的账号登录以继续。",
+    "signInDescription": "请使用已开通的账号登录。",
     "username": "用户名",
     "usernamePlaceholder": "请输入用户名",
     "password": "密码",
@@ -498,7 +498,7 @@
   },
   "users": {
     "title": "用户管理",
-    "subtitle": "管理系统用户账户、所属部门与角色分配。",
+    "subtitle": "管理系统登录账号，并维护减脂、增肌、慢病调理等测试画像。",
     "add": "添加用户",
     "searchPlaceholder": "筛选用户（用户名）…",
     "empty": "暂无用户数据，可点击右上角添加。",

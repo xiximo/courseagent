@@ -33,6 +33,7 @@ class User(Base):
         index=True,
     )
     role_codes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    profile_json: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -266,10 +266,10 @@ def create_initial_state() -> SessionState:
 def create_welcome_message(conversation: dict | None = None) -> AgentMessage:
     welcome = (conversation or {}).get(
         "welcomeMessage",
-        "您好！我是 AI 课程顾问，可为您提供学生夏令营、教师培训或 OPC 平台服务咨询。请问您需要哪类帮助？",
+        "您好，请问有什么可以帮您？",
     )
-    menu = (conversation or {}).get("menuButtons") or ["学生课程", "教师培训", "平台服务"]
-    return _assistant(welcome, quick_actions=list(menu))
+    menu = (conversation or {}).get("menuButtons") or []
+    return _assistant(welcome, quick_actions=list(menu) or None)
 
 
 def process_message(

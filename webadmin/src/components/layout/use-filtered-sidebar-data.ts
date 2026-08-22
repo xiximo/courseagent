@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
+import { MessageSquare } from 'lucide-react'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import type { AppPermission } from '@/lib/auth/permissions'
+import { useCourseAgentsQuery } from '@/features/course-agent/hooks/use-course-agents-query'
+import { isAgentVisibleInChat } from '@/features/course-agent/lib/agent-schedule'
 import { sidebarData } from './data/sidebar-data'
 import { type NavGroup, type NavItem } from './types'
 
@@ -32,6 +35,8 @@ function filterNavItems(
 
 export function useFilteredSidebarData() {
   const { can } = useAppPermissions()
+  const canViewAgents = can('course_agent_view')
+  const { data: agents = [] } = useCourseAgentsQuery(canViewAgents)
 
   return useMemo(() => {
     const navGroups: NavGroup[] = sidebarData.navGroups
@@ -42,6 +47,20 @@ export function useFilteredSidebarData() {
       })
       .filter(Boolean) as NavGroup[]
 
+    const published = agents.filter((agent) => isAgentVisibleInChat(agent))
+    if (canViewAgents && published.length > 0) {
+      navGroups.unshift({
+        title: 'nav.group.agentChat',
+        items: published.map((agent) => ({
+          title: agent.name,
+          url: `/admin/chat/${agent.agentId}`,
+          icon: MessageSquare,
+          rawTitle: true,
+          requiredPermissions: ['course_agent_view'],
+        })),
+      })
+    }
+
     return { ...sidebarData, navGroups }
-  }, [can])
+  }, [agents, can, canViewAgents])
 }

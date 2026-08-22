@@ -26,6 +26,13 @@ import {
 import { useFilteredSidebarData } from './layout/use-filtered-sidebar-data'
 import { ScrollArea } from './ui/scroll-area'
 
+function navLabel(
+  t: (key: string) => string,
+  item: { title: string; rawTitle?: boolean }
+) {
+  return item.rawTitle ? item.title : t(item.title)
+}
+
 export function CommandMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -55,7 +62,7 @@ export function CommandMenu() {
                   return (
                     <CommandItem
                       key={`${String(navItem.url)}-${i}`}
-                      value={`${t(navItem.title)}-${String(navItem.url)}`}
+                      value={`${navLabel(t, navItem)}-${String(navItem.url)}`}
                       onSelect={() => {
                         runCommand(() => navigate({ to: navItem.url }))
                       }}
@@ -63,14 +70,14 @@ export function CommandMenu() {
                       <div className='flex size-4 items-center justify-center'>
                         <ArrowRight className='size-2 text-muted-foreground/80' />
                       </div>
-                      {t(navItem.title)}
+                      {navLabel(t, navItem)}
                     </CommandItem>
                   )
 
                 return navItem.items?.map((subItem, j) => (
                   <CommandItem
                     key={`${navItem.title}-${String(subItem.url)}-${j}`}
-                    value={`${t(navItem.title)}-${t(subItem.title)}-${String(subItem.url)}`}
+                    value={`${navLabel(t, navItem)}-${navLabel(t, subItem)}-${String(subItem.url)}`}
                     onSelect={() => {
                       runCommand(() => navigate({ to: subItem.url }))
                     }}
@@ -78,7 +85,7 @@ export function CommandMenu() {
                     <div className='flex size-4 items-center justify-center'>
                       <ArrowRight className='size-2 text-muted-foreground/80' />
                     </div>
-                    {t(navItem.title)} <ChevronRight /> {t(subItem.title)}
+                    {navLabel(t, navItem)} <ChevronRight /> {navLabel(t, subItem)}
                   </CommandItem>
                 ))
               })}

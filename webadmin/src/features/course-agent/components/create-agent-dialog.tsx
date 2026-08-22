@@ -38,8 +38,9 @@ const AGENT_TYPE_OPTIONS: {
   },
   {
     type: 'autonomous',
-    title: '自主性',
-    description: '更高自主度，LLM 自主理解意图并规划多轮对话（POC）。',
+    title: 'Harness',
+    description:
+      '工具编排：知识库检索 + 用户画像读写，结合 Soul 与禁止规则自主规划问答。',
     icon: Sparkles,
   },
 ]

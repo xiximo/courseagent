@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.course_agent.workflow.chrome import filter_branch_actions
 from app.course_agent.workflow.conditions import eval_condition, guess_intent_from_text
 from app.course_agent.workflow.graph_loader import index_graph, load_workflow_graph
 from app.course_agent.workflow.nodes import execute_node
@@ -18,6 +19,7 @@ from app.course_agent.workflow.types import (
     TurnResult,
     WorkflowRuntimeState,
 )
+from app.course_agent.trace import make_trace, node_label
 
 ROLE_ENTRY_ACTIONS = frozenset({"学生课程", "教师培训", "平台服务"})
 
@@ -94,6 +96,7 @@ class WorkflowEngine:
         """执行一轮对话。
 
         产出：
+        - ("trace", dict) 节点执行轨迹
         - ("delta", {"text": str}) 模型增量（仅 stream=True 且走 LLM 时）
         - ("turn_complete", TurnResult) 本轮结束
         """
@@ -149,6 +152,10 @@ class WorkflowEngine:
                 state.current_node_id = control["id"]
 
         title_hint = text if len(text) <= 40 else None
+        yield (
+            "trace",
+            make_trace("turn", "开始处理用户问题", detail=text[:400], status="running"),
+        )
         # 无次数上限；仅用「本轮已执行节点」打断图内死循环（如 A→B→A）
         executed_nodes: set[str] = set()
 
@@ -172,6 +179,15 @@ class WorkflowEngine:
                 state.awaiting_input = True
                 break
 
+            yield (
+                "trace",
+                make_trace(
+                    "node",
+                    f"执行节点：{node_label(node)}",
+                    detail=str(node.get("type") or ""),
+                    status="running",
+                ),
+            )
             raw = execute_node(
                 db=self.db,
                 agent_id=self.agent_id,
@@ -270,7 +286,7 @@ class WorkflowEngine:
             text = str(item).strip()
             if text and text not in out:
                 out.append(text)
-        return out
+        return filter_branch_actions(out)
 
     def _all_graph_quick_actions(self) -> set[str]:
         known: set[str] = set()

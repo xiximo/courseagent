@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import create_access_token, get_current_user
@@ -17,6 +17,7 @@ from app.schemas.auth import (
     LoginResponse,
 )
 from app.schemas.common import ApiResponse, success
+from app.services.login_audit import record_login, resolve_client_ip
 from app.services.password import hash_password, verify_password
 from app.services.users import get_user_by_username, to_auth_profile
 
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 @router.post("/login", response_model=ApiResponse[LoginResponse])
 def login(
     body: LoginBody,
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
     db: Session = Depends(get_db),
 ):
@@ -38,7 +40,9 @@ def login(
     if user.status != AccountStatus.enabled:
         raise ApiBusinessError("ACCOUNT_DISABLED", "账号已禁用或不可用", 403)
 
-    user.last_login_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    user.last_login_at = now
+    record_login(db, user, resolve_client_ip(request), logged_in_at=now)
     db.commit()
     db.refresh(user)
 

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,6 +11,7 @@ from app.api.errors import ApiBusinessError
 from app.config import get_settings
 from app.db.session import engine
 from app.routers import (
+    audit,
     auth,
     course_agent,
     harness,
@@ -21,6 +23,7 @@ from app.routers import (
     qibiao,
     settings as settings_router,
     sync,
+    users,
 )
 from app.course_agent.bootstrap import init_database
 from app.storage import get_storage
@@ -65,7 +68,22 @@ async def lifespan(_app: FastAPI):
             "Object storage init failed — check STORAGE_BACKEND / LOCAL_STORAGE_ROOT"
         )
 
+    stop_scheduler = asyncio.Event()
+    scheduler_task = None
+    if app_settings.harness_scheduler_enabled:
+        from app.course_agent.scheduler import harness_scheduler_loop
+
+        scheduler_task = asyncio.create_task(harness_scheduler_loop(stop_scheduler))
+        logger.info("Harness scheduler started")
+
     yield
+
+    stop_scheduler.set()
+    if scheduler_task is not None:
+        try:
+            await scheduler_task
+        except Exception:
+            logger.exception("Harness scheduler shutdown failed")
 
 
 app = FastAPI(
@@ -112,6 +130,8 @@ async def unhandled_exception_handler(_request: Request, exc: Exception):
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(audit.router)
 app.include_router(settings_router.router)
 app.include_router(sync.router)
 app.include_router(processing.router)

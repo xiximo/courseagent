@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, parse_user_uuid
 from app.api.errors import ApiBusinessError
 from app.course_agent.material_service import MaterialService
 from app.course_agent.model_service import ModelService
@@ -17,6 +16,8 @@ from app.review.sse import format_sse_event
 from app.schemas.auth import AuthUserProfile
 from app.schemas.common import ApiResponse, success
 from app.schemas.course_agent import (
+    AdminSessionDetailDto,
+    AdminUserSessionGroupDto,
     CourseAgentConfigDto,
     CourseAgentKnowledgeBaseDto,
     CourseAgentLeadDetailDto,
@@ -24,6 +25,7 @@ from app.schemas.course_agent import (
     CourseAgentModelProfileDto,
     CourseAgentPatchBody,
     CourseAgentSessionDto,
+    CourseAgentSessionSummaryDto,
     CourseAgentSummaryDto,
     CourseMaterialActionResultDto,
     CourseMaterialDocumentDto,
@@ -32,6 +34,7 @@ from app.schemas.course_agent import (
     CreateCourseModelBody,
     DeleteCourseAgentLeadResultDto,
     DeleteCourseAgentResultDto,
+    DeleteCourseAgentSessionResultDto,
     DeleteCourseKnowledgeBaseResultDto,
     DeleteCourseModelResultDto,
     PublicAgentConfigDto,
@@ -42,6 +45,17 @@ from app.schemas.course_agent import (
 from app.schemas.processing import AttachmentExtractedTextDto
 
 router = APIRouter(tags=["course-agent"])
+
+_ADMIN_ROLES = {"sys_admin", "system_admin", "admin"}
+
+
+def _require_admin(
+    user: AuthUserProfile = Depends(get_current_user),
+) -> AuthUserProfile:
+    codes = {code.lower() for code in user.roleCodes}
+    if not (codes & _ADMIN_ROLES):
+        raise ApiBusinessError("FORBIDDEN", "仅管理员可查看会话记录", 403)
+    return user
 
 SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -90,17 +104,6 @@ def _visitor_from_request(request: Request):
         client_ip=_client_ip_from_request(request),
         user_agent=request.headers.get("user-agent"),
         origin=_origin_from_request(request),
-    )
-
-
-def _optional_embed_verify(
-    request: Request,
-    agent_id: str,
-    embed_key: Annotated[str | None, Header(alias="X-Embed-Key")] = None,
-    db: Session = Depends(get_db),
-) -> None:
-    CourseAgentService(db).verify_embed_access(
-        agent_id, embed_key, _origin_from_request(request)
     )
 
 
@@ -159,6 +162,45 @@ def delete_course_agent_lead(
     return success(
         DeleteCourseAgentLeadResultDto(**CourseAgentService(db).delete_lead(parsed))
     )
+
+
+@router.get(
+    "/api/v1/course-agent/session-records",
+    response_model=ApiResponse[list[AdminUserSessionGroupDto]],
+)
+def list_admin_session_records(
+    agent_id: str | None = None,
+    _: AuthUserProfile = Depends(_require_admin),
+    db: Session = Depends(get_db),
+):
+    return success(CourseAgentService(db).list_admin_session_groups(agent_id))
+
+
+@router.get(
+    "/api/v1/course-agent/session-records/{session_id}",
+    response_model=ApiResponse[AdminSessionDetailDto],
+)
+def get_admin_session_record(
+    session_id: str,
+    _: AuthUserProfile = Depends(_require_admin),
+    db: Session = Depends(get_db),
+):
+    parsed = _parse_uuid(session_id, label="会话 ID")
+    return success(CourseAgentService(db).get_admin_session(parsed))
+
+
+@router.delete(
+    "/api/v1/course-agent/session-records/{session_id}",
+    response_model=ApiResponse[DeleteCourseAgentSessionResultDto],
+)
+def delete_admin_session_record(
+    session_id: str,
+    _: AuthUserProfile = Depends(_require_admin),
+    db: Session = Depends(get_db),
+):
+    parsed = _parse_uuid(session_id, label="会话 ID")
+    CourseAgentService(db).delete_admin_session(parsed)
+    return success(DeleteCourseAgentSessionResultDto())
 
 
 @router.post(
@@ -220,6 +262,18 @@ def set_default_course_agent(
     db: Session = Depends(get_db),
 ):
     return success(CourseAgentService(db).set_default_agent(agent_id))
+
+
+@router.post(
+    "/api/v1/course-agents/{agent_id}/schedule/run",
+    response_model=ApiResponse[CourseAgentConfigDto],
+)
+def run_course_agent_schedule(
+    agent_id: str,
+    _: AuthUserProfile = Depends(_require_admin),
+    db: Session = Depends(get_db),
+):
+    return success(CourseAgentService(db).run_schedule_now(agent_id))
 
 
 @router.get(
@@ -741,14 +795,25 @@ def reset_preview_session(
     return success(CourseAgentService(db).reset_preview_session(parsed))
 
 
-# --- 公开 API（无 JWT）---
+def _require_user_id(user: AuthUserProfile) -> uuid.UUID:
+    user_id = parse_user_uuid(user)
+    if user_id is None:
+        raise ApiBusinessError("UNAUTHORIZED", "用户不存在或已失效", 401)
+    return user_id
+
+
+# --- 对话 API（需登录）---
 
 
 @router.get(
     "/api/v1/course-agents/{agent_id}/public-config",
     response_model=ApiResponse[PublicAgentConfigDto],
 )
-def get_public_agent_config(agent_id: str, db: Session = Depends(get_db)):
+def get_public_agent_config(
+    agent_id: str,
+    _user: AuthUserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return success(CourseAgentService(db).get_public_config(agent_id))
 
 
@@ -758,6 +823,7 @@ def get_public_agent_config(agent_id: str, db: Session = Depends(get_db)):
 )
 def get_public_attachment_extracted_text(
     attachment_id: str,
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(attachment_id, label="附件 ID")
@@ -771,17 +837,57 @@ def get_public_attachment_extracted_text(
 def create_public_session(
     agent_id: str,
     request: Request,
-    embed_key: Annotated[str | None, Header(alias="X-Embed-Key")] = None,
+    user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    CourseAgentService(db).verify_embed_access(
-        agent_id, embed_key, _origin_from_request(request)
-    )
     return success(
         CourseAgentService(db).create_session(
-            agent_id, visitor=_visitor_from_request(request)
+            agent_id,
+            visitor=_visitor_from_request(request),
+            user_id=_require_user_id(user),
         )
     )
+
+
+@router.get(
+    "/api/v1/course-agents/{agent_id}/sessions",
+    response_model=ApiResponse[list[CourseAgentSessionSummaryDto]],
+)
+def list_agent_sessions(
+    agent_id: str,
+    user: AuthUserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return success(CourseAgentService(db).list_sessions(agent_id, _require_user_id(user)))
+
+
+@router.get(
+    "/api/v1/course-agent/sessions/{session_id}",
+    response_model=ApiResponse[CourseAgentSessionDto],
+)
+def get_agent_session(
+    session_id: str,
+    user: AuthUserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    parsed = _parse_uuid(session_id, label="会话 ID")
+    return success(
+        CourseAgentService(db).get_session(parsed, user_id=_require_user_id(user))
+    )
+
+
+@router.delete(
+    "/api/v1/course-agent/sessions/{session_id}",
+    response_model=ApiResponse[DeleteCourseAgentSessionResultDto],
+)
+def delete_agent_session(
+    session_id: str,
+    user: AuthUserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    parsed = _parse_uuid(session_id, label="会话 ID")
+    CourseAgentService(db).delete_session(parsed, user_id=_require_user_id(user))
+    return success(DeleteCourseAgentSessionResultDto())
 
 
 @router.post(
@@ -792,12 +898,16 @@ def send_public_message(
     session_id: str,
     body: SendCourseAgentMessageBody,
     request: Request,
+    user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     return success(
         CourseAgentService(db).send_message(
-            parsed, body.content, visitor=_visitor_from_request(request)
+            parsed,
+            body.content,
+            visitor=_visitor_from_request(request),
+            user_id=_require_user_id(user),
         )
     )
 
@@ -807,16 +917,18 @@ def send_public_message_stream(
     session_id: str,
     body: SendCourseAgentMessageBody,
     request: Request,
+    user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     visitor = _visitor_from_request(request)
+    user_id = _require_user_id(user)
     service = CourseAgentService(db)
 
     def event_stream():
         yield format_sse_event("ping", {"status": "started"})
         for event, data in service.iter_send_message_events(
-            parsed, body.content, visitor=visitor
+            parsed, body.content, visitor=visitor, user_id=user_id
         ):
             yield format_sse_event(event, data if isinstance(data, dict) else {"data": data})
 
@@ -829,16 +941,22 @@ def send_public_message_stream(
         },
     )
 
+
 @router.post(
     "/api/v1/course-agent/sessions/{session_id}/reset",
     response_model=ApiResponse[CourseAgentSessionDto],
 )
 def reset_public_session(
-    session_id: str, request: Request, db: Session = Depends(get_db)
+    session_id: str,
+    request: Request,
+    user: AuthUserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     return success(
         CourseAgentService(db).reset_session(
-            parsed, visitor=_visitor_from_request(request)
+            parsed,
+            visitor=_visitor_from_request(request),
+            user_id=_require_user_id(user),
         )
     )

@@ -362,12 +362,12 @@ export function createDefaultNodeConfig(type: WorkflowNodeType): WorkflowNodeCon
     case 'entry':
       return {
         welcomeText:
-          '您好，我是 AI 教育中心课程顾问。可咨询学生暑期营、教师培训或 OPC 平台服务。请选择入口，或直接说明您的身份。',
-        quickActions: ['学生课程', '教师培训', '平台服务'],
+          '您好，请问有什么可以帮您？',
+        quickActions: [],
       } satisfies EntryConfig
     case 'identity':
       return {
-        promptWhenUnknown: '请问您是学生/家长、教师，还是机构/企业人员？',
+        promptWhenUnknown: '请问有什么可以帮您？',
         allowedRoles: ['student', 'teacher', 'org'],
       } satisfies IdentityConfig
     case 'slot_fill':
@@ -384,13 +384,13 @@ export function createDefaultNodeConfig(type: WorkflowNodeType): WorkflowNodeCon
         lockFirstCourse: true,
         systemExtra:
           '仅依据当前知识库资料推荐 1–2 个真实班型；理由须逐条对应已采集约束；不得编造费用与档期。',
-        quickActions: ['了解报名方式', '查看所有课程', '重新开始'],
+        quickActions: ['重新开始'],
       } satisfies RagRecommendConfig
     case 'rag_qa':
       return {
         systemExtra:
           '围绕 lockedCourse 回答；末尾可提及文档名与章节；资料不足则明确说明。',
-        quickActions: ['了解报名方式', '重新开始'],
+        quickActions: ['重新开始'],
       } satisfies RagQaConfig
     case 'rag_enroll':
       return {
@@ -403,24 +403,24 @@ export function createDefaultNodeConfig(type: WorkflowNodeType): WorkflowNodeCon
         forbidCourseRecommend: true,
         systemExtra:
           '仅介绍 OPC 平台、会员与企业合作；不得输出学生/教师班型推荐，不得把会员价当作课程费用。',
-        quickActions: ['查看所有课程', '重新开始'],
+        quickActions: ['重新开始'],
       } satisfies RagPlatformConfig
     case 'session_control':
       return {
-        restartText: '好的，已为您重新开始。请重新选择服务入口。',
+        restartText: '好的，已为您重新开始。',
         listCoursesIntro: '根据当前身份资料，可了解的班型/服务如下：',
-        quickActions: ['学生课程', '教师培训', '平台服务'],
+        quickActions: [],
       } satisfies SessionControlConfig
     case 'boundary':
       return {
         templates: {
           outOfScope:
-            '该问题超出课程顾问服务范围。您可选择学生课程、教师培训或平台服务继续咨询。',
+            '该问题暂时无法回答，请换一种方式描述您的需求。',
           modelError: '模型暂时不可用，请稍后重试，或联系人工客服。',
           crossMaterial:
             '该问题属于其他服务范畴，为避免信息混淆，请切换对应入口后再问。',
         },
-        quickActions: ['学生课程', '教师培训', '平台服务'],
+        quickActions: [],
       } satisfies BoundaryConfig
   }
 }

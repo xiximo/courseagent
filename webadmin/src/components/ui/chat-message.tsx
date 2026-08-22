@@ -154,7 +154,7 @@ export function ChatMessage({
                       <MarkdownRenderer>{part.text}</MarkdownRenderer>
                     )
                   )}
-                  {showTimeStamp && createdAt ? (
+                  {showTimeStamp && createdAt && !Number.isNaN(createdAt.getTime()) ? (
                     <time
                       dateTime={createdAt.toISOString()}
                       className={cn(
@@ -202,7 +202,7 @@ export function ChatMessage({
             <MarkdownRenderer>{content}</MarkdownRenderer>
           )
         )}
-        {showTimeStamp && createdAt ? (
+        {showTimeStamp && createdAt && !Number.isNaN(createdAt.getTime()) ? (
           <time
             dateTime={createdAt.toISOString()}
             className={cn(

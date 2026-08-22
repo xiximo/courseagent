@@ -1,4 +1,4 @@
-import { Outlet, useRouterState } from '@tanstack/react-router'
+import { Outlet } from '@tanstack/react-router'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
 import { LayoutProvider } from '@/context/layout-provider'
@@ -11,25 +11,8 @@ type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
-function isStandalonePreviewPath(pathname: string) {
-  return /\/admin\/course-agents\/[^/]+\/preview\/?$/.test(pathname)
-}
-
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const standalonePreview = isStandalonePreviewPath(pathname)
   const defaultOpen = getCookie('sidebar_state') !== 'false'
-
-  if (standalonePreview) {
-    return (
-      <SearchProvider>
-        <LayoutProvider>
-          <SkipToMain />
-          <div className='bg-background min-h-svh'>{children ?? <Outlet />}</div>
-        </LayoutProvider>
-      </SearchProvider>
-    )
-  }
 
   return (
     <SearchProvider>
@@ -42,7 +25,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
               // Set content container, so we can use container queries
               '@container/content',
 
-              // If layout is fixed, set the height
+              // If layout is fixed, make the height
               // to 100svh to prevent overflow
               'has-data-[layout=fixed]:h-svh',
 

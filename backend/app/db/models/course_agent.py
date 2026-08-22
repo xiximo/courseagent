@@ -38,6 +38,12 @@ class CourseAgentSessionRecord(Base):
     agent_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("course_agent.agent_id", ondelete="CASCADE"), index=True
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_account.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(256), default="新对话")
     step: Mapped[str] = mapped_column(String(32), default="welcome")
     role: Mapped[str | None] = mapped_column(String(32), nullable=True)

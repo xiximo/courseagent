@@ -18,6 +18,8 @@ type BaseNavItem = {
   badge?: string
   icon?: React.ElementType
   requiredPermissions?: AppPermission[]
+  /** 标题为业务文案（如 Agent 名称），不做 i18n */
+  rawTitle?: boolean
 }
 
 type NavLink = BaseNavItem & {

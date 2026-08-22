@@ -44,14 +44,61 @@ export type CourseAgentSessionState = {
   lockedCourse?: string
 }
 
+export type CourseAgentSessionSummary = {
+  id: string
+  agentId: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type CourseAgentSession = {
   id: string
   agentId: string
   title: string
   messages: CourseAgentMessage[]
   state: CourseAgentSessionState
+  trace?: CourseAgentTraceEvent[]
   createdAt: string
   updatedAt: string
+}
+
+export type AdminSessionRecord = {
+  id: string
+  agentId: string
+  agentName: string
+  title: string
+  messageCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type AdminUserSessionGroup = {
+  userId: string | null
+  username: string
+  fullName: string
+  personaLabel?: string | null
+  sessionCount: number
+  lastActiveAt?: string | null
+  sessions: AdminSessionRecord[]
+}
+
+export type AdminSessionDetail = CourseAgentSession & {
+  agentName: string
+  userId: string | null
+  username: string
+  fullName: string
+  personaLabel?: string | null
+}
+
+export type CourseAgentTraceEvent = {
+  id: string
+  type: 'turn' | 'thinking' | 'tool' | 'tool_result' | 'reply' | 'node'
+  title: string
+  detail?: string
+  toolName?: string
+  status?: 'running' | 'done'
+  createdAt: string
 }
 
 export type CourseAgentModelConfig = {
@@ -221,6 +268,35 @@ export type CourseAgentConversationConfig = {
   outOfScopeMessage: string
 }
 
+export type CourseAgentReactTool = {
+  id: string
+  name: string
+  description: string
+  kind?: 'kb' | 'profile_get' | 'profile_update'
+  knowledgeBaseIds: string[]
+  enabled: boolean
+}
+
+export type CourseAgentReactConfig = {
+  soul: string
+  prohibitionRules: string
+  maxToolRounds: number
+  tools: CourseAgentReactTool[]
+}
+
+export type CourseAgentSchedule = {
+  enabled: boolean
+  intervalHours: number
+  runMode: 'chat' | 'scheduled'
+  visibleInChat: boolean
+  target: 'all_users' | 'members'
+  onlyIfNewMessages: boolean
+  lookbackHours: number
+  taskPrompt: string
+  lastRunAt?: string | null
+  lastRunNote?: string | null
+}
+
 export type CourseAgentConfig = {
   agentId: string
   name: string
@@ -239,6 +315,8 @@ export type CourseAgentConfig = {
   knowledgeBases: CourseAgentKnowledgeBase[]
   embed: CourseAgentEmbedConfig
   conversation: CourseAgentConversationConfig
+  reactConfig?: CourseAgentReactConfig | null
+  schedule?: CourseAgentSchedule | null
   updatedAt: string
 }
 
@@ -247,6 +325,9 @@ export type CourseAgentSummary = Pick<
   'agentId' | 'name' | 'description' | 'status' | 'agentType' | 'updatedAt'
 > & {
   isDefault?: boolean
+  visibleInChat?: boolean
+  runMode?: 'chat' | 'scheduled' | string
+  scheduleEnabled?: boolean
 }
 
 export type CreateCourseAgentInput = {

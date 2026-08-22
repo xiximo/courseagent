@@ -44,7 +44,9 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
                 <span className='truncate font-semibold'>
                   {activeTeam.name}
                 </span>
-                <span className='truncate text-xs'>{activeTeam.plan}</span>
+                {activeTeam.plan ? (
+                  <span className='truncate text-xs'>{activeTeam.plan}</span>
+                ) : null}
               </div>
               <ChevronsUpDown className='ms-auto' />
             </SidebarMenuButton>

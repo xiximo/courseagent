@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.errors import ApiBusinessError
@@ -15,6 +15,7 @@ from app.course_agent.lead_service import (
     VisitorContext,
     is_restart_text,
 )
+from app.db.models.user import User
 from app.course_agent.llm_helper import CourseAgentLlmHelper
 from app.course_agent.material_service import MaterialService
 from app.course_agent.model_service import ModelService
@@ -34,6 +35,7 @@ from app.course_agent.state_machine import (
     create_welcome_message,
     process_message,
 )
+from app.course_agent.workflow.chrome import filter_branch_actions
 from app.course_agent.workflow import (
     WorkflowEngine,
     state_from_session,
@@ -48,6 +50,9 @@ from app.db.models.course_agent import (
     CourseAgentSessionRecord,
 )
 from app.schemas.course_agent import (
+    AdminSessionDetailDto,
+    AdminSessionRecordDto,
+    AdminUserSessionGroupDto,
     CourseAgentConfigDto,
     CourseAgentLeadDetailDto,
     CourseAgentLeadSummaryDto,
@@ -55,7 +60,9 @@ from app.schemas.course_agent import (
     CourseAgentPatchBody,
     CourseAgentSessionDto,
     CourseAgentSessionStateDto,
+    CourseAgentSessionSummaryDto,
     CourseAgentSummaryDto,
+    CourseAgentTraceEventDto,
     CreateCourseAgentBody,
     PublicAgentConfigDto,
 )
@@ -145,15 +152,13 @@ def _default_config(
             "position": "bottom-right",
         },
         "conversation": {
-            "welcomeMessage": (
-                "您好！我是 AI 课程顾问，可为您提供学生夏令营、教师培训或 OPC 平台服务咨询。"
-            ),
+            "welcomeMessage": "您好，请问有什么可以帮您？",
             "systemPrompt": "",
-            "menuButtons": ["学生课程", "教师培训", "平台服务"],
+            "menuButtons": [],
             "resetMessage": "已为您重新开始。",
             "emptyInputMessage": "请输入您的问题。",
             "tooLongMessage": "输入过长，请精简后重新发送（限 500 字）。",
-            "outOfScopeMessage": "抱歉，我仅提供课程与平台服务咨询。",
+            "outOfScopeMessage": "该问题暂时无法回答，请换一种方式描述您的需求。",
         },
         "_meta": {
             "agentId": agent_id,
@@ -181,30 +186,33 @@ def _apply_agent_type_defaults(cfg: dict, agent_type: CourseAgentType, name: str
         from app.course_agent.llm_helper import SYSTEM_PROMPT
 
         cfg["stateMachine"] = []
-        conversation["welcomeMessage"] = (
-            f"您好！我是{name}，可直接就课程与平台服务向我提问。"
-        )
+        conversation["welcomeMessage"] = f"您好！我是{name}，请直接向我提问。"
         conversation.setdefault("systemPrompt", SYSTEM_PROMPT)
         conversation["menuButtons"] = []
     elif agent_type == "workflow":
         cfg["stateMachine"] = list(DEFAULT_STATE_MACHINE)
         if not cfg.get("workflowGraph"):
             cfg["workflowGraph"] = load_workflow_graph({})
-        conversation.setdefault(
-            "welcomeMessage",
-            "您好！我是 AI 课程顾问，可为您提供学生夏令营、教师培训或 OPC 平台服务咨询。",
-        )
-        conversation.setdefault(
-            "menuButtons", ["学生课程", "教师培训", "平台服务"]
-        )
+        conversation.setdefault("welcomeMessage", "您好，请问有什么可以帮您？")
+        conversation.setdefault("menuButtons", [])
     else:
+        from app.course_agent.react_agent import (
+            DEFAULT_MENU_BUTTONS,
+            DEFAULT_WELCOME,
+            default_react_config,
+        )
+
         cfg["stateMachine"] = list(AUTONOMOUS_STATE_MACHINE)
         meta["autonomyLevel"] = "high"
         cfg["_meta"] = meta
-        conversation["welcomeMessage"] = (
-            f"您好！我是{name}，将自主理解您的需求并结合知识库给出建议。"
-        )
-        conversation["menuButtons"] = []
+        conversation["welcomeMessage"] = DEFAULT_WELCOME
+        conversation["menuButtons"] = list(DEFAULT_MENU_BUTTONS)
+        conversation["emptyInputMessage"] = "请输入您的问题"
+        conversation["tooLongMessage"] = "输入内容过长，请精简后重试"
+        cfg["reactConfig"] = default_react_config(agent_name=name)
+        from app.course_agent.schedule import normalize_schedule
+
+        cfg["schedule"] = normalize_schedule({"enabled": False, "runMode": "chat"})
 
     cfg["conversation"] = conversation
     return cfg
@@ -214,6 +222,14 @@ def _iso(dt: datetime | None) -> str:
     if dt is None:
         return datetime.now(UTC).isoformat()
     return dt.isoformat()
+
+
+def can_access_owned_session(
+    owner_user_id: uuid.UUID | None, viewer_user_id: uuid.UUID | None
+) -> bool:
+    if owner_user_id is None or viewer_user_id is None:
+        return False
+    return owner_user_id == viewer_user_id
 
 
 class CourseAgentService:
@@ -231,6 +247,116 @@ class CourseAgentService:
 
     def delete_lead(self, lead_id: uuid.UUID) -> dict[str, str]:
         return self.leads.delete_lead(lead_id)
+
+    def list_admin_session_groups(
+        self, agent_id: str | None = None
+    ) -> list[AdminUserSessionGroupDto]:
+        stmt = (
+            select(CourseAgentSessionRecord, CourseAgentRecord.name)
+            .join(
+                CourseAgentRecord,
+                CourseAgentRecord.agent_id == CourseAgentSessionRecord.agent_id,
+            )
+            .where(CourseAgentSessionRecord.id.in_(self._session_ids_with_user_messages()))
+            .order_by(desc(CourseAgentSessionRecord.updated_at))
+        )
+        if agent_id:
+            stmt = stmt.where(CourseAgentSessionRecord.agent_id == agent_id)
+        rows = [
+            (session, agent_name)
+            for session, agent_name in self.db.execute(stmt).all()
+            if not self._is_preview_session(session)
+        ]
+        if not rows:
+            return []
+
+        session_ids = [session.id for session, _ in rows]
+        count_rows = self.db.execute(
+            select(
+                CourseAgentMessageRecord.session_id,
+                func.count(CourseAgentMessageRecord.id),
+            )
+            .where(CourseAgentMessageRecord.session_id.in_(session_ids))
+            .group_by(CourseAgentMessageRecord.session_id)
+        ).all()
+        message_counts = {sid: int(count) for sid, count in count_rows}
+
+        user_ids = [session.user_id for session, _ in rows if session.user_id]
+        users: dict[uuid.UUID, User] = {}
+        if user_ids:
+            for user in self.db.scalars(select(User).where(User.id.in_(user_ids))):
+                users[user.id] = user
+
+        grouped: dict[uuid.UUID | None, AdminUserSessionGroupDto] = {}
+        order: list[uuid.UUID | None] = []
+        for session, agent_name in rows:
+            key = session.user_id
+            if key not in grouped:
+                user = users.get(key) if key else None
+                grouped[key] = self._empty_session_group(key, user)
+                order.append(key)
+            grouped[key].sessions.append(
+                AdminSessionRecordDto(
+                    id=str(session.id),
+                    agentId=session.agent_id,
+                    agentName=agent_name,
+                    title=session.title or "新对话",
+                    messageCount=message_counts.get(session.id, 0),
+                    createdAt=_iso(session.created_at),
+                    updatedAt=_iso(session.updated_at),
+                )
+            )
+        result: list[AdminUserSessionGroupDto] = []
+        for key in order:
+            group = grouped[key]
+            group.sessionCount = len(group.sessions)
+            group.lastActiveAt = group.sessions[0].updatedAt if group.sessions else None
+            result.append(group)
+        return result
+
+    def get_admin_session(self, session_id: uuid.UUID) -> AdminSessionDetailDto:
+        session = self._load_session(session_id)
+        if session is None or self._is_preview_session(session):
+            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        agent = self.db.get(CourseAgentRecord, session.agent_id)
+        user = self.db.get(User, session.user_id) if session.user_id else None
+        dto = self._to_session_dto(session, include_all_messages=True)
+        group = self._empty_session_group(session.user_id, user)
+        return AdminSessionDetailDto(
+            **dto.model_dump(),
+            agentName=agent.name if agent else session.agent_id,
+            userId=group.userId,
+            username=group.username,
+            fullName=group.fullName,
+            personaLabel=group.personaLabel,
+        )
+
+    def delete_admin_session(self, session_id: uuid.UUID) -> None:
+        session = self.db.get(CourseAgentSessionRecord, session_id)
+        if session is None:
+            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        self.db.delete(session)
+        self.db.commit()
+
+    @staticmethod
+    def _empty_session_group(
+        user_id: uuid.UUID | None, user: User | None
+    ) -> AdminUserSessionGroupDto:
+        if user is None:
+            return AdminUserSessionGroupDto(
+                userId=None,
+                username="guest",
+                fullName="游客",
+                personaLabel=None,
+            )
+        profile = user.profile_json if isinstance(user.profile_json, dict) else {}
+        label = str(profile.get("personaLabel") or "").strip() or None
+        return AdminUserSessionGroupDto(
+            userId=str(user.id),
+            username=user.username,
+            fullName=user.full_name or user.username,
+            personaLabel=label,
+        )
 
     def list_agents(self) -> list[CourseAgentSummaryDto]:
         rows = self.db.scalars(
@@ -331,6 +457,16 @@ class CourseAgentService:
         row = self._get_agent_row(agent_id, require_active=False)
         return self._to_config_dto(row)
 
+    def run_schedule_now(self, agent_id: str) -> CourseAgentConfigDto:
+        from app.course_agent.schedule import run_scheduled_agent
+
+        row = self._get_agent_row(agent_id, require_active=False)
+        if _read_agent_type(row.config_json or {}) != "autonomous":
+            raise ApiBusinessError("INVALID_AGENT", "仅 Harness Agent 支持定时执行", 400)
+        run_scheduled_agent(self.db, row)
+        self.db.refresh(row)
+        return self._to_config_dto(row)
+
     def update_agent(self, agent_id: str, body: CourseAgentPatchBody) -> CourseAgentConfigDto:
         row = self._get_agent_row(agent_id, require_active=False)
         cfg = dict(row.config_json or {})
@@ -358,6 +494,27 @@ class CourseAgentService:
             cfg["embed"] = body.embed.model_dump()
         if body.conversation is not None:
             cfg["conversation"] = body.conversation.model_dump()
+        if body.reactConfig is not None:
+            from app.course_agent.react_agent import normalize_react_config
+
+            cfg["reactConfig"] = normalize_react_config(body.reactConfig.model_dump())
+            bound = []
+            for tool in cfg["reactConfig"].get("tools") or []:
+                for kb_id in tool.get("knowledgeBaseIds") or []:
+                    if kb_id and kb_id not in bound:
+                        bound.append(kb_id)
+            if bound:
+                cfg["boundKnowledgeBaseIds"] = bound
+        if body.schedule is not None:
+            from app.course_agent.schedule import normalize_schedule
+
+            incoming = normalize_schedule(body.schedule.model_dump())
+            previous = normalize_schedule(cfg.get("schedule"))
+            if not incoming.get("lastRunAt"):
+                incoming["lastRunAt"] = previous.get("lastRunAt")
+            if not incoming.get("lastRunNote"):
+                incoming["lastRunNote"] = previous.get("lastRunNote")
+            cfg["schedule"] = incoming
         row.config_json = cfg
         row.updated_at = datetime.now(UTC)
         self.db.commit()
@@ -377,13 +534,18 @@ class CourseAgentService:
         )
 
     def create_session(
-        self, agent_id: str, visitor: VisitorContext | None = None
+        self,
+        agent_id: str,
+        visitor: VisitorContext | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> CourseAgentSessionDto:
+        if user_id is None:
+            raise ApiBusinessError("UNAUTHORIZED", "请先登录后再开始对话", 401)
         row = self._get_agent_row(agent_id)
         cfg = row.config_json or {}
         if self._uses_workflow(cfg):
             return self._create_workflow_session(
-                row, is_preview=False, visitor=visitor
+                row, is_preview=False, visitor=visitor, user_id=user_id
             )
 
         conv = cfg.get("conversation") or {}
@@ -392,6 +554,7 @@ class CourseAgentService:
 
         session = CourseAgentSessionRecord(
             agent_id=agent_id,
+            user_id=user_id,
             title="新对话",
             step=state.step,
             role=state.role,
@@ -409,18 +572,62 @@ class CourseAgentService:
         loaded = self._load_session(session.id)
         return self._to_session_dto(loaded)
 
+    def list_sessions(
+        self, agent_id: str, user_id: uuid.UUID
+    ) -> list[CourseAgentSessionSummaryDto]:
+        self._get_agent_row(agent_id, require_active=False)
+        rows = list(
+            self.db.scalars(
+                select(CourseAgentSessionRecord)
+                .where(
+                    CourseAgentSessionRecord.agent_id == agent_id,
+                    CourseAgentSessionRecord.user_id == user_id,
+                    CourseAgentSessionRecord.id.in_(
+                        self._session_ids_with_user_messages()
+                    ),
+                )
+                .order_by(desc(CourseAgentSessionRecord.updated_at))
+            ).all()
+        )
+        return [
+            CourseAgentSessionSummaryDto(
+                id=str(row.id),
+                agentId=row.agent_id,
+                title=row.title or "新对话",
+                createdAt=_iso(row.created_at),
+                updatedAt=_iso(row.updated_at),
+            )
+            for row in rows
+            if not self._is_preview_session(row)
+        ]
+
+    def get_session(
+        self, session_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> CourseAgentSessionDto:
+        session = self._require_session(session_id, user_id)
+        self._get_agent_row(session.agent_id, require_active=False)
+        return self._to_session_dto(session)
+
+    def delete_session(
+        self, session_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> None:
+        session = self.db.get(CourseAgentSessionRecord, session_id)
+        if session is None or not can_access_owned_session(session.user_id, user_id):
+            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        self.db.delete(session)
+        self.db.commit()
+
     def send_message(
         self,
         session_id: uuid.UUID,
         content: str,
         visitor: VisitorContext | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> CourseAgentSessionDto:
-        session = self._load_session(session_id)
-        if session is None:
-            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        session = self._require_session(session_id, user_id)
 
         if is_restart_text(content):
-            return self.reset_session(session_id, visitor=visitor)
+            return self.reset_session(session_id, visitor=visitor, user_id=user_id)
 
         agent = self._get_agent_row(session.agent_id)
         cfg = agent.config_json or {}
@@ -432,15 +639,27 @@ class CourseAgentService:
         if _read_agent_type(cfg) == "basic":
             return self._send_legacy_preview_message(session, agent, content)
 
+        if _read_agent_type(cfg) == "autonomous":
+            dto: CourseAgentSessionDto | None = None
+            for kind, payload in self._iter_react_message_events(
+                session, agent, content, visitor=visitor
+            ):
+                if kind == "done":
+                    dto = payload  # type: ignore[assignment]
+            if dto is None:
+                raise ApiBusinessError("INTERNAL", "Harness 处理失败", 500)
+            return dto
+
         return self._send_legacy_message(session, agent, content, visitor=visitor)
 
     def reset_session(
-        self, session_id: uuid.UUID, visitor: VisitorContext | None = None
+        self,
+        session_id: uuid.UUID,
+        visitor: VisitorContext | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> CourseAgentSessionDto:
         """重新开始：切新线索，清空对话区仅展示新欢迎语。"""
-        session = self._load_session(session_id)
-        if session is None:
-            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        session = self._require_session(session_id, user_id)
 
         agent = self._get_agent_row(session.agent_id)
         cfg = agent.config_json or {}
@@ -459,6 +678,7 @@ class CourseAgentService:
 
         session = CourseAgentSessionRecord(
             agent_id=agent_id,
+            user_id=None,
             title="对话预览",
             step="preview",
             role=None,
@@ -590,11 +810,7 @@ class CourseAgentService:
         return self._to_session_dto(loaded)
 
     def _uses_workflow(self, cfg: dict) -> bool:
-        agent_type = _read_agent_type(cfg)
-        if agent_type == "workflow":
-            return True
-        graph = cfg.get("workflowGraph")
-        return bool(isinstance(graph, dict) and graph.get("nodes"))
+        return _read_agent_type(cfg) == "workflow"
 
     def _create_workflow_session(
         self,
@@ -602,6 +818,7 @@ class CourseAgentService:
         *,
         is_preview: bool,
         visitor: VisitorContext | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> CourseAgentSessionDto:
         engine = WorkflowEngine(self.db, agent.agent_id, agent.config_json)
         state = engine.create_initial_state(is_preview=is_preview)
@@ -610,6 +827,7 @@ class CourseAgentService:
 
         session = CourseAgentSessionRecord(
             agent_id=agent.agent_id,
+            user_id=None if is_preview else user_id,
             title="对话预览" if is_preview else "新对话",
             step=fields["step"],
             role=fields["role"],
@@ -653,15 +871,14 @@ class CourseAgentService:
         session_id: uuid.UUID,
         content: str,
         visitor: VisitorContext | None = None,
+        user_id: uuid.UUID | None = None,
     ):
         """公开对话流式事件：delta / done / error。"""
         try:
-            session = self._load_session(session_id)
-            if session is None:
-                raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+            session = self._require_session(session_id, user_id)
 
             if is_restart_text(content):
-                dto = self.reset_session(session_id, visitor=visitor)
+                dto = self.reset_session(session_id, visitor=visitor, user_id=user_id)
                 yield "done", dto.model_dump()
                 return
 
@@ -673,10 +890,15 @@ class CourseAgentService:
                 )
                 return
 
-            # 基础型：RAG + 可配置系统提示词（与预览路径一致）
             if _read_agent_type(cfg) == "basic":
                 yield from self._iter_legacy_preview_message_events(
                     session, agent, content, as_dict=True
+                )
+                return
+
+            if _read_agent_type(cfg) == "autonomous":
+                yield from self._iter_react_message_events(
+                    session, agent, content, visitor=visitor, as_dict=True
                 )
                 return
 
@@ -726,6 +948,140 @@ class CourseAgentService:
                 "statusCode": exc.status_code,
             }
 
+    def _iter_react_message_events(
+        self,
+        session: CourseAgentSessionRecord,
+        agent: CourseAgentRecord,
+        content: str,
+        visitor: VisitorContext | None = None,
+        *,
+        as_dict: bool = False,
+    ):
+        from app.course_agent.react_agent import (
+            default_react_config,
+            default_tools_from_knowledge_bases,
+            has_knowledge_tools,
+            iter_react_turn,
+            normalize_react_config,
+        )
+
+        trimmed = content.strip()
+        conv = (agent.config_json or {}).get("conversation") or {}
+        if not trimmed:
+            raise ApiBusinessError(
+                "EMPTY_INPUT",
+                conv.get("emptyInputMessage") or "请输入您的问题",
+                400,
+            )
+        if len(trimmed) > 500:
+            raise ApiBusinessError(
+                "INPUT_TOO_LONG",
+                conv.get("tooLongMessage") or "输入内容过长，请精简后重试",
+                400,
+            )
+
+        lead = self.leads.ensure_open_lead(session, visitor)
+        lead_id = lead.id
+        user_msg = AgentMessage(
+            id=_msg_id(),
+            role="user",
+            content=trimmed,
+            created_at=_now_iso(),
+        )
+        self._persist_message(session.id, user_msg, lead_id=lead_id)
+        session.updated_at = datetime.now(UTC)
+
+        visible = [
+            m
+            for m in session.messages
+            if m.lead_id is None or m.lead_id == lead_id
+        ]
+        history = [
+            (m.role, m.content)
+            for m in visible
+            if m.role in ("user", "assistant") and (m.content or "").strip()
+        ]
+
+        cfg = agent.config_json or {}
+        react_cfg = normalize_react_config(cfg.get("reactConfig") or {})
+        if not has_knowledge_tools(react_cfg.get("tools")):
+            kbs = MaterialService(self.db).ensure_agent_materials(agent.agent_id)
+            kb_dicts = [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "materialLabel": item.materialLabel,
+                }
+                for item in kbs
+            ]
+            seeded = default_react_config(agent_name=agent.name, knowledge_bases=kb_dicts)
+            if not react_cfg.get("soul"):
+                react_cfg["soul"] = seeded["soul"]
+            if not react_cfg.get("prohibitionRules"):
+                react_cfg["prohibitionRules"] = seeded["prohibitionRules"]
+            react_cfg["tools"] = default_tools_from_knowledge_bases(kb_dicts)
+
+        reply_content = ""
+        citations: list[Citation] = []
+        traces: list[dict] = []
+        for kind, payload in iter_react_turn(
+            self.db,
+            agent_id=agent.agent_id,
+            react_cfg=react_cfg,
+            user_text=trimmed,
+            history=history,
+            user_id=session.user_id,
+            session=session,
+        ):
+            if kind == "delta":
+                yield "delta", payload
+            elif kind == "trace":
+                traces.append(payload)
+                yield "trace", payload
+            elif kind == "result":
+                reply_content = str(payload.get("content") or "")
+                citations = list(payload.get("citations") or [])
+
+        if not reply_content:
+            reply_content = "服务繁忙，请稍后重试。"
+
+        from app.course_agent.trace import merge_trace_into_constraints
+
+        session.constraints_json = merge_trace_into_constraints(
+            session.constraints_json, traces
+        )
+
+        assistant_msg = AgentMessage(
+            id=_msg_id(),
+            role="assistant",
+            content=reply_content,
+            created_at=_now_iso(),
+            citations=citations or None,
+        )
+        enriched = enrich_citations_with_attachments(
+            self.db, session.agent_id, assistant_msg.citations
+        )
+        if enriched is not None:
+            assistant_msg = AgentMessage(
+                id=assistant_msg.id,
+                role=assistant_msg.role,
+                content=assistant_msg.content,
+                created_at=assistant_msg.created_at,
+                citations=enriched,
+                quick_actions=assistant_msg.quick_actions,
+            )
+        self._persist_message(session.id, assistant_msg, lead_id=lead_id)
+
+        if session.title in ("新对话", "对话预览") and len(trimmed) <= 40:
+            session.title = trimmed
+        session.updated_at = datetime.now(UTC)
+        self.leads.sync_profile(lead, session)
+        self.db.commit()
+        self.db.expire(session, ["messages"])
+        loaded = self._load_session(session.id)
+        dto = self._to_session_dto(loaded)
+        yield "done", (dto.model_dump() if as_dict else dto)
+
     def _iter_workflow_message_events(
         self,
         session: CourseAgentSessionRecord,
@@ -760,9 +1116,14 @@ class CourseAgentService:
             state.current_node_id = engine.entry_node_id
 
         result = None
+        traces: list[dict] = []
+        prev_trace = list((session.constraints_json or {}).get("_agentTrace") or [])
         for kind, payload in engine.iter_handle_turn(state, content, stream=True):
             if kind == "delta":
                 yield "delta", payload
+            elif kind == "trace":
+                traces.append(payload)
+                yield "trace", payload
             elif kind == "turn_complete":
                 result = payload
 
@@ -786,7 +1147,15 @@ class CourseAgentService:
 
         session.step = fields["step"]
         session.role = fields["role"]
-        session.constraints_json = fields["constraints_json"]
+        from app.course_agent.trace import merge_trace_into_constraints
+
+        workflow_constraints = dict(fields["constraints_json"] or {})
+        workflow_constraints["_agentTrace"] = [
+            item for item in prev_trace if isinstance(item, dict)
+        ]
+        session.constraints_json = merge_trace_into_constraints(
+            workflow_constraints, traces
+        )
         session.recommended_courses = fields["recommended_courses"]
         session.locked_course = fields["locked_course"]
         session.updated_at = datetime.now(UTC)
@@ -799,6 +1168,7 @@ class CourseAgentService:
             self.leads.sync_profile(lead, session)
 
         self.db.commit()
+        self.db.expire(session, ["messages"])
         loaded = self._load_session(session.id)
         dto = self._to_session_dto(loaded)
         yield "done", (dto.model_dump() if as_dict else dto)
@@ -922,6 +1292,7 @@ class CourseAgentService:
         )
         self._persist_message(session.id, reply)
         self.db.commit()
+        self.db.expire(session, ["messages"])
         loaded = self._load_session(session.id)
         dto = self._to_session_dto(loaded)
         yield "done", (dto.model_dump() if as_dict else dto)
@@ -1131,20 +1502,6 @@ class CourseAgentService:
             raise ApiBusinessError("TEXT_NOT_FOUND", "文档尚未完成解析", 404)
         return result
 
-    def verify_embed_access(
-        self, agent_id: str, embed_key: str | None, origin: str | None
-    ) -> None:
-        row = self._get_agent_row(agent_id)
-        embed = (row.config_json or {}).get("embed") or {}
-        expected = embed.get("embedKey")
-        if expected and embed_key and embed_key != expected:
-            raise ApiBusinessError("FORBIDDEN", "embedKey 无效", 403)
-        allowed = embed.get("allowedOrigins") or []
-        # 仅嵌入 widget（带 X-Embed-Key）时校验来源域名；独立 /chat 页不限制
-        if embed_key and allowed and origin:
-            if not any(origin.startswith(o.rstrip("/")) for o in allowed):
-                raise ApiBusinessError("FORBIDDEN", "来源域名未授权", 403)
-
     def _get_agent_row(
         self, agent_id: str, *, require_active: bool = True
     ) -> CourseAgentRecord:
@@ -1154,16 +1511,25 @@ class CourseAgentService:
         if require_active and row.status != "active":
             raise ApiBusinessError(
                 "AGENT_INACTIVE",
-                "Agent 未启用（当前为草稿/停用）。管理端请用「预览对话」；公开对话页需先将状态设为启用。",
+                "Agent 未启用（当前为草稿/停用）。请先将状态设为启用后再进行对话。",
                 400,
             )
         return row
+
+    def _require_session(
+        self, session_id: uuid.UUID, user_id: uuid.UUID | None
+    ) -> CourseAgentSessionRecord:
+        session = self._load_session(session_id)
+        if session is None or not can_access_owned_session(session.user_id, user_id):
+            raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        return session
 
     def _load_session(self, session_id: uuid.UUID) -> CourseAgentSessionRecord | None:
         return self.db.scalar(
             select(CourseAgentSessionRecord)
             .where(CourseAgentSessionRecord.id == session_id)
             .options(selectinload(CourseAgentSessionRecord.messages))
+            .execution_options(populate_existing=True)
         )
 
     def _build_rag_query(self, user_text: str, state: SessionState) -> str:
@@ -1235,7 +1601,10 @@ class CourseAgentService:
         )
 
     def _to_summary(self, row: CourseAgentRecord) -> CourseAgentSummaryDto:
+        from app.course_agent.schedule import normalize_schedule
+
         cfg = row.config_json or {}
+        schedule = normalize_schedule(cfg.get("schedule"))
         return CourseAgentSummaryDto(
             agentId=row.agent_id,
             name=row.name,
@@ -1243,6 +1612,9 @@ class CourseAgentService:
             status=row.status,
             agentType=_read_agent_type(cfg),
             isDefault=_is_default_agent(cfg),
+            visibleInChat=bool(schedule["visibleInChat"]),
+            runMode=str(schedule["runMode"]),
+            scheduleEnabled=bool(schedule["enabled"]),
             updatedAt=_iso(row.updated_at),
         )
 
@@ -1261,6 +1633,38 @@ class CourseAgentService:
             from app.course_agent.llm_helper import resolve_system_prompt
 
             conversation["systemPrompt"] = resolve_system_prompt(conversation)
+
+        react_cfg = None
+        if _read_agent_type(cfg) == "autonomous":
+            from app.course_agent.react_agent import (
+                default_react_config,
+                default_tools_from_knowledge_bases,
+                has_knowledge_tools,
+                normalize_react_config,
+            )
+
+            react_cfg = normalize_react_config(cfg.get("reactConfig") or {})
+            if not has_knowledge_tools(react_cfg.get("tools")):
+                kb_dicts = [
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "materialLabel": item.materialLabel,
+                    }
+                    for item in knowledge_bases
+                ]
+                seeded = default_react_config(
+                    agent_name=row.name, knowledge_bases=kb_dicts
+                )
+                react_cfg["soul"] = react_cfg.get("soul") or seeded["soul"]
+                react_cfg["prohibitionRules"] = (
+                    react_cfg.get("prohibitionRules") or seeded["prohibitionRules"]
+                )
+                react_cfg["tools"] = default_tools_from_knowledge_bases(kb_dicts)
+
+        from app.course_agent.schedule import normalize_schedule
+
+        schedule = normalize_schedule(cfg.get("schedule"))
 
         return CourseAgentConfigDto(
             agentId=row.agent_id,
@@ -1284,10 +1688,27 @@ class CourseAgentService:
             knowledgeBases=knowledge_bases,
             embed=cfg.get("embed") or {"embedKey": ""},
             conversation=conversation,
+            reactConfig=react_cfg,
+            schedule=schedule,
             updatedAt=_iso(row.updated_at),
         )
 
-    def _to_session_dto(self, row: CourseAgentSessionRecord) -> CourseAgentSessionDto:
+    def _session_ids_with_user_messages(self):
+        return (
+            select(CourseAgentMessageRecord.session_id)
+            .where(CourseAgentMessageRecord.role == "user")
+            .distinct()
+        )
+
+    def _is_preview_session(self, row: CourseAgentSessionRecord) -> bool:
+        if row.title == "对话预览" or row.step == "preview":
+            return True
+        meta = (row.constraints_json or {}).get("_workflow") or {}
+        return bool(meta.get("isPreview"))
+
+    def _to_session_dto(
+        self, row: CourseAgentSessionRecord, *, include_all_messages: bool = False
+    ) -> CourseAgentSessionDto:
         is_preview = bool(
             ((row.constraints_json or {}).get("_workflow") or {}).get("isPreview")
         ) or row.title == "对话预览" or row.step == "preview"
@@ -1301,7 +1722,12 @@ class CourseAgentService:
         messages = []
         for m in row.messages:
             # 公开对话只展示当前咨询线索的消息，重新开始后对话框被清空
-            if active_lead_id is not None and m.lead_id != active_lead_id:
+            if (
+                not include_all_messages
+                and active_lead_id is not None
+                and m.lead_id is not None
+                and m.lead_id != active_lead_id
+            ):
                 continue
             citations = m.citations_json
             if citations and m.role == "assistant":
@@ -1326,9 +1752,8 @@ class CourseAgentService:
                     content=m.content,
                     createdAt=_iso(m.created_at),
                     citations=citations,
-                    quickActions=list(m.quick_actions_json)
-                    if m.quick_actions_json
-                    else None,
+                    quickActions=filter_branch_actions(list(m.quick_actions_json or []))
+                    or None,
                 )
             )
         state = CourseAgentSessionStateDto(
@@ -1338,12 +1763,21 @@ class CourseAgentService:
             recommendedCourses=list(row.recommended_courses or []),
             lockedCourse=row.locked_course,
         )
+        from app.course_agent.trace import traces_from_constraints
+
+        trace_events: list[CourseAgentTraceEventDto] = []
+        for item in traces_from_constraints(row.constraints_json):
+            try:
+                trace_events.append(CourseAgentTraceEventDto.model_validate(item))
+            except Exception:
+                continue
         return CourseAgentSessionDto(
             id=str(row.id),
             agentId=row.agent_id,
             title=row.title,
             messages=messages,
             state=state,
+            trace=trace_events,
             createdAt=_iso(row.created_at),
             updatedAt=_iso(row.updated_at),
         )

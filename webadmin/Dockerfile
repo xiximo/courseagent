@@ -1,5 +1,5 @@
-ARG NODE_IMAGE=docker.1ms.run/library/node:22-bookworm-slim
-ARG NGINX_IMAGE=docker.1ms.run/library/nginx:1.27-alpine
+ARG NODE_IMAGE=node:22-alpine
+ARG NGINX_IMAGE=nginx:latest
 
 FROM ${NODE_IMAGE} AS build
 
@@ -11,6 +11,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+ENV VITE_QIBIAO_MOCK=false
 RUN npm run build
 
 FROM ${NGINX_IMAGE}

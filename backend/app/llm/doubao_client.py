@@ -84,6 +84,106 @@ def chat_completion(
         raise DoubaoClientError("豆包 API 响应格式异常") from exc
 
 
+@dataclass
+class DoubaoToolCall:
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass
+class DoubaoCompletion:
+    content: str
+    tool_calls: list[DoubaoToolCall]
+    finish_reason: str
+    assistant_message: dict
+    reasoning: str = ""
+
+
+def chat_completion_turn(
+    *,
+    api_key: str,
+    endpoint_id: str,
+    messages: list[dict],
+    tools: list[dict] | None = None,
+    base_url: str = "https://ark.cn-beijing.volces.com/api/v3",
+    timeout_seconds: int = 120,
+    temperature: float = 0.3,
+) -> DoubaoCompletion:
+    """单轮 Chat Completions，支持 OpenAI 兼容 tools / tool_calls。"""
+    if not api_key.strip():
+        raise DoubaoClientError("豆包 API Key 未配置")
+    if not endpoint_id.strip():
+        raise DoubaoClientError("豆包 Endpoint 未配置")
+
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    payload: dict = {
+        "model": endpoint_id.strip(),
+        "messages": messages,
+        "temperature": temperature,
+        "stream": False,
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        with httpx.Client(timeout=timeout_seconds, trust_env=False) as client:
+            response = client.post(url, json=payload, headers=headers)
+    except httpx.TimeoutException as exc:
+        raise DoubaoClientError("豆包 API 请求超时") from exc
+    except httpx.HTTPError as exc:
+        raise DoubaoClientError(f"豆包 API 网络错误: {exc}") from exc
+
+    if response.status_code >= 400:
+        detail = response.text[:500]
+        logger.warning("Doubao API error %s: %s", response.status_code, detail)
+        raise DoubaoClientError(f"豆包 API 错误 ({response.status_code}): {detail}")
+
+    try:
+        body = response.json()
+        message = body["choices"][0]["message"]
+        finish_reason = str(body["choices"][0].get("finish_reason") or "")
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise DoubaoClientError("豆包 API 响应格式异常") from exc
+
+    raw_calls = message.get("tool_calls") or []
+    tool_calls: list[DoubaoToolCall] = []
+    for item in raw_calls:
+        if not isinstance(item, dict):
+            continue
+        fn = item.get("function") if isinstance(item.get("function"), dict) else {}
+        tool_calls.append(
+            DoubaoToolCall(
+                id=str(item.get("id") or f"call_{len(tool_calls)}"),
+                name=str(fn.get("name") or "").strip(),
+                arguments=str(fn.get("arguments") or ""),
+            )
+        )
+
+    content = str(message.get("content") or "").strip()
+    reasoning = str(
+        message.get("reasoning_content") or message.get("reasoning") or ""
+    ).strip()
+    assistant_message = {
+        "role": "assistant",
+        "content": message.get("content"),
+    }
+    if raw_calls:
+        assistant_message["tool_calls"] = raw_calls
+    return DoubaoCompletion(
+        content=content,
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
+        assistant_message=assistant_message,
+        reasoning=reasoning,
+    )
+
+
 def iter_chat_completion(
     *,
     api_key: str,

@@ -4,8 +4,8 @@ import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
 import {
-  deleteCourseAgentLead,
-  getCourseAgentLead,
+  deleteAdminSessionRecord,
+  getAdminSessionRecord,
 } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -18,22 +18,9 @@ import {
 } from '../components/course-agent-message-list'
 import { CitationSourceSheet } from '../components/citation-source-sheet'
 import type {
+  AdminSessionDetail,
   CourseAgentCitation,
-  CourseAgentLeadDetail,
 } from '../data/types'
-
-function roleLabel(role: string | null | undefined) {
-  switch (role) {
-    case 'student':
-      return '学生'
-    case 'teacher':
-      return '教师'
-    case 'org':
-      return '机构'
-    default:
-      return role || '未识别'
-  }
-}
 
 function formatTime(iso: string | null | undefined) {
   if (!iso) return '—'
@@ -49,10 +36,11 @@ type AgentLeadDetailPageProps = {
 }
 
 export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
+  const sessionId = leadId
   const navigate = useNavigate()
   const { can } = useAppPermissions()
   const canConfig = can('course_agent_config')
-  const [lead, setLead] = useState<CourseAgentLeadDetail | null>(null)
+  const [record, setRecord] = useState<AdminSessionDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const [activeCitation, setActiveCitation] =
@@ -63,16 +51,16 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    void (async () => {
       setLoading(true)
       setError(undefined)
       try {
-        const detail = await getCourseAgentLead(leadId)
-        if (!cancelled) setLead(detail)
+        const detail = await getAdminSessionRecord(sessionId)
+        if (!cancelled) setRecord(detail)
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof ApiClientError ? e.message : '加载线索详情失败')
-          setLead(null)
+          setError(e instanceof ApiClientError ? e.message : '加载会话记录失败')
+          setRecord(null)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -81,24 +69,24 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
     return () => {
       cancelled = true
     }
-  }, [leadId])
+  }, [sessionId])
 
   const uiMessages: CourseAgentUiMessage[] = useMemo(() => {
-    if (!lead) return []
-    return lead.messages.map((m) => ({
+    if (!record) return []
+    return record.messages.map((m) => ({
       id: m.id,
       role: m.role,
       content: m.content,
       createdAt: new Date(m.createdAt),
       citations: m.citations,
     }))
-  }, [lead])
+  }, [record])
 
   const handleDeleteConfirm = async () => {
     setDeleting(true)
     try {
-      const result = await deleteCourseAgentLead(leadId)
-      toast.success(result.message || '线索已删除')
+      await deleteAdminSessionRecord(sessionId)
+      toast.success('会话已删除')
       setConfirmOpen(false)
       void navigate({ to: '/admin/course-agents/leads' })
     } catch (e) {
@@ -116,11 +104,9 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
     return <AppErrorAlert message={error} />
   }
 
-  if (!lead) {
-    return <p className='text-muted-foreground'>线索不存在</p>
+  if (!record) {
+    return <p className='text-muted-foreground'>会话不存在</p>
   }
-
-  const constraints = lead.profile?.constraints || {}
 
   return (
     <div className='flex flex-col gap-4'>
@@ -133,15 +119,15 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
         </Button>
         <div className='min-w-0 flex-1'>
           <h2 className='truncate text-2xl font-bold tracking-tight'>
-            {lead.title}
+            {record.title || '新对话'}
           </h2>
           <p className='text-muted-foreground text-sm'>
-            {lead.agentName} · 第 {lead.consultationIndex} 次咨询
+            {record.agentName} · {record.fullName}（@{record.username}）
           </p>
         </div>
-        <Badge variant={lead.status === 'open' ? 'default' : 'secondary'}>
-          {lead.status === 'open' ? '进行中' : '已结束'}
-        </Badge>
+        {record.personaLabel ? (
+          <Badge variant='secondary'>{record.personaLabel}</Badge>
+        ) : null}
         {canConfig ? (
           <Button
             type='button'
@@ -158,52 +144,36 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
 
       <div className='grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2 lg:grid-cols-3'>
         <div>
-          <div className='text-muted-foreground'>访客 IP</div>
-          <div className='font-mono'>{lead.clientIp || '—'}</div>
-        </div>
-        <div>
-          <div className='text-muted-foreground'>身份</div>
-          <div>{roleLabel(lead.role)}</div>
-        </div>
-        <div>
-          <div className='text-muted-foreground'>开始 / 结束</div>
+          <div className='text-muted-foreground'>用户</div>
           <div>
-            {formatTime(lead.startedAt)}
-            {lead.endedAt ? ` → ${formatTime(lead.endedAt)}` : ''}
+            {record.fullName}
+            <span className='text-muted-foreground ml-1 font-mono text-xs'>
+              @{record.username}
+            </span>
           </div>
         </div>
         <div>
-          <div className='text-muted-foreground'>城市 / 日期</div>
-          <div>
-            {[constraints.city, constraints.date].filter(Boolean).join(' · ') ||
-              '—'}
-          </div>
+          <div className='text-muted-foreground'>Agent</div>
+          <div>{record.agentName}</div>
         </div>
         <div>
-          <div className='text-muted-foreground'>形式 / 目标</div>
-          <div>
-            {[constraints.format, constraints.goal].filter(Boolean).join(' · ') ||
-              '—'}
-          </div>
+          <div className='text-muted-foreground'>消息数</div>
+          <div>{record.messages.length}</div>
         </div>
         <div>
-          <div className='text-muted-foreground'>来源</div>
-          <div className='truncate' title={lead.origin || undefined}>
-            {lead.origin || '—'}
-          </div>
+          <div className='text-muted-foreground'>创建时间</div>
+          <div>{formatTime(record.createdAt)}</div>
         </div>
-        {lead.userAgent ? (
-          <div className='sm:col-span-2 lg:col-span-3'>
-            <div className='text-muted-foreground'>User-Agent</div>
-            <div className='text-muted-foreground break-all text-xs'>
-              {lead.userAgent}
-            </div>
-          </div>
-        ) : null}
+        <div>
+          <div className='text-muted-foreground'>更新时间</div>
+          <div>{formatTime(record.updatedAt)}</div>
+        </div>
       </div>
 
       <div className='rounded-md border p-4'>
-        <h3 className='mb-4 font-semibold'>对话过程（{lead.messageCount} 条）</h3>
+        <h3 className='mb-4 font-semibold'>
+          对话过程（{record.messages.length} 条）
+        </h3>
         {uiMessages.length === 0 ? (
           <p className='text-muted-foreground text-sm'>暂无消息</p>
         ) : (
@@ -228,11 +198,10 @@ export function AgentLeadDetailPage({ leadId }: AgentLeadDetailPageProps) {
         onOpenChange={(open) => {
           if (!open && !deleting) setConfirmOpen(false)
         }}
-        title='删除客户线索'
+        title='删除会话记录'
         desc={
           <>
-            确定删除「{lead.title}」（#{lead.consultationIndex}
-            ）吗？线索记录将删除，会话中的消息仍会保留，且不可恢复。
+            确定删除「{record.title || '新对话'}」吗？对话内容将一并删除，且不可恢复。
           </>
         }
         cancelBtnText='取消'

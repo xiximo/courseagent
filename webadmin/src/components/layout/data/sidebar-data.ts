@@ -1,9 +1,10 @@
 import {
+  ClipboardList,
   Database,
   GraduationCap,
-  MessageSquare,
   Settings,
   SlidersHorizontal,
+  UserCog,
   Users,
   Wrench,
 } from 'lucide-react'
@@ -18,9 +19,9 @@ export const sidebarData: SidebarData = {
   },
   teams: [
     {
-      name: 'Agent',
+      name: '企业智能体平台',
       logo: GraduationCap,
-      plan: 'Agent',
+      plan: '',
     },
   ],
   navGroups: [
@@ -28,34 +29,45 @@ export const sidebarData: SidebarData = {
       title: 'nav.group.courseAgent',
       items: [
         {
-          title: 'nav.link.agentPreview',
-          url: '/admin/course-agents/preview',
-          icon: MessageSquare,
-          requiredPermissions: ['course_agent_view'],
-        },
-        {
           title: 'nav.link.courseAgents',
           url: '/admin/course-agents',
           icon: GraduationCap,
-          requiredPermissions: ['course_agent_view'],
+          requiredPermissions: ['course_agent_config'],
         },
         {
           title: 'nav.link.agentLeads',
           url: '/admin/course-agents/leads',
           icon: Users,
-          requiredPermissions: ['course_agent_view'],
+          requiredPermissions: ['course_agent_config'],
         },
         {
           title: 'nav.link.agentModel',
           url: '/admin/models',
           icon: SlidersHorizontal,
-          requiredPermissions: ['course_agent_view'],
+          requiredPermissions: ['course_agent_config'],
         },
         {
           title: 'nav.link.agentKnowledge',
           url: '/admin/knowledge',
           icon: Database,
-          requiredPermissions: ['course_agent_view'],
+          requiredPermissions: ['course_agent_config'],
+        },
+      ],
+    },
+    {
+      title: 'nav.group.administration',
+      items: [
+        {
+          title: 'nav.link.userManagement',
+          url: '/users',
+          icon: UserCog,
+          requiredPermissions: ['user_manage'],
+        },
+        {
+          title: 'nav.link.auditManagement',
+          url: '/audit',
+          icon: ClipboardList,
+          requiredPermissions: ['user_manage'],
         },
       ],
     },

@@ -14,6 +14,7 @@ from app.db.models.user import AccountStatus, User
 from app.db.session import SessionLocal, engine
 from app.services.llm_settings import get_or_create_llm_config
 from app.services.password import hash_password
+from app.services.users import ensure_persona_test_users
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def init_database() -> None:
 
     with SessionLocal() as db:
         _ensure_admin_user(db)
+        ensure_persona_test_users(db)
         get_or_create_llm_config(db)
         migrate_all_agents_from_config_json(db)
 

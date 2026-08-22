@@ -22,22 +22,21 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
-import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
+import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
+import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
+import { Route as AuthenticatedAdminChatAgentIdRouteImport } from './routes/_authenticated/admin/chat/$agentId'
 import { Route as AuthenticatedAdminCourseAgentsIndexRouteImport } from './routes/_authenticated/admin/course-agents/index'
 import { Route as AuthenticatedAdminCourseAgentsAgentIdRouteImport } from './routes/_authenticated/admin/course-agents/$agentId'
 import { Route as AuthenticatedAdminCourseAgentsConversationRouteImport } from './routes/_authenticated/admin/course-agents/conversation'
-import { Route as AuthenticatedAdminCourseAgentsEmbedRouteImport } from './routes/_authenticated/admin/course-agents/embed'
 import { Route as AuthenticatedAdminCourseAgentsModelRouteImport } from './routes/_authenticated/admin/course-agents/model'
-import { Route as AuthenticatedAdminCourseAgentsPreviewRouteImport } from './routes/_authenticated/admin/course-agents/preview'
 import { Route as AuthenticatedAdminCourseAgentsStateMachineRouteImport } from './routes/_authenticated/admin/course-agents/state-machine'
 import { Route as AuthenticatedAdminKnowledgeIndexRouteImport } from './routes/_authenticated/admin/knowledge/index'
 import { Route as AuthenticatedAdminKnowledgeKbIdRouteImport } from './routes/_authenticated/admin/knowledge/$kbId'
 import { Route as AuthenticatedAdminModelsIndexRouteImport } from './routes/_authenticated/admin/models/index'
-import { Route as AuthenticatedAdminCourseAgentsAgentIdPreviewRouteImport } from './routes/_authenticated/admin/course-agents/$agentId_.preview'
 import { Route as AuthenticatedAdminCourseAgentsLeadsIndexRouteImport } from './routes/_authenticated/admin/course-agents/leads/index'
 import { Route as AuthenticatedAdminCourseAgentsLeadsLeadIdRouteImport } from './routes/_authenticated/admin/course-agents/leads/$leadId'
 
@@ -106,10 +105,10 @@ const AuthenticatedSettingsRouteRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const ChatAgentIdRoute = ChatAgentIdRouteImport.update({
-  id: '/chat/$agentId',
-  path: '/chat/$agentId',
-  getParentRoute: () => rootRouteImport,
+const AuthenticatedAuditIndexRoute = AuthenticatedAuditIndexRouteImport.update({
+  id: '/audit/',
+  path: '/audit/',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
@@ -135,6 +134,17 @@ const AuthenticatedSettingsAppearanceRoute =
     path: '/appearance',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminChatAgentIdRoute =
+  AuthenticatedAdminChatAgentIdRouteImport.update({
+    id: '/admin/chat/$agentId',
+    path: '/admin/chat/$agentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminCourseAgentsIndexRoute =
   AuthenticatedAdminCourseAgentsIndexRouteImport.update({
     id: '/admin/course-agents/',
@@ -153,22 +163,10 @@ const AuthenticatedAdminCourseAgentsConversationRoute =
     path: '/admin/course-agents/conversation',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminCourseAgentsEmbedRoute =
-  AuthenticatedAdminCourseAgentsEmbedRouteImport.update({
-    id: '/admin/course-agents/embed',
-    path: '/admin/course-agents/embed',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedAdminCourseAgentsModelRoute =
   AuthenticatedAdminCourseAgentsModelRouteImport.update({
     id: '/admin/course-agents/model',
     path: '/admin/course-agents/model',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminCourseAgentsPreviewRoute =
-  AuthenticatedAdminCourseAgentsPreviewRouteImport.update({
-    id: '/admin/course-agents/preview',
-    path: '/admin/course-agents/preview',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminCourseAgentsStateMachineRoute =
@@ -193,12 +191,6 @@ const AuthenticatedAdminModelsIndexRoute =
   AuthenticatedAdminModelsIndexRouteImport.update({
     id: '/admin/models/',
     path: '/admin/models/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminCourseAgentsAgentIdPreviewRoute =
-  AuthenticatedAdminCourseAgentsAgentIdPreviewRouteImport.update({
-    id: '/admin/course-agents/$agentId_/preview',
-    path: '/admin/course-agents/$agentId/preview',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminCourseAgentsLeadsIndexRoute =
@@ -227,22 +219,21 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/chat/$agentId': typeof ChatAgentIdRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/audit/': typeof AuthenticatedAuditIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/users/': typeof AuthenticatedUsersIndexRoute
+  '/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
   '/admin/course-agents/$agentId': typeof AuthenticatedAdminCourseAgentsAgentIdRoute
   '/admin/course-agents/conversation': typeof AuthenticatedAdminCourseAgentsConversationRoute
-  '/admin/course-agents/embed': typeof AuthenticatedAdminCourseAgentsEmbedRoute
   '/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
-  '/admin/course-agents/preview': typeof AuthenticatedAdminCourseAgentsPreviewRoute
   '/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
   '/admin/course-agents/': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/admin/knowledge/': typeof AuthenticatedAdminKnowledgeIndexRoute
   '/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
-  '/admin/course-agents/$agentId/preview': typeof AuthenticatedAdminCourseAgentsAgentIdPreviewRoute
   '/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/admin/course-agents/leads/': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
@@ -257,23 +248,22 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/chat/$agentId': typeof ChatAgentIdRoute
   '/': typeof AuthenticatedIndexRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/audit': typeof AuthenticatedAuditIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/users': typeof AuthenticatedUsersIndexRoute
+  '/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
   '/admin/course-agents/$agentId': typeof AuthenticatedAdminCourseAgentsAgentIdRoute
   '/admin/course-agents/conversation': typeof AuthenticatedAdminCourseAgentsConversationRoute
-  '/admin/course-agents/embed': typeof AuthenticatedAdminCourseAgentsEmbedRoute
   '/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
-  '/admin/course-agents/preview': typeof AuthenticatedAdminCourseAgentsPreviewRoute
   '/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
   '/admin/course-agents': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/admin/knowledge': typeof AuthenticatedAdminKnowledgeIndexRoute
   '/admin/models': typeof AuthenticatedAdminModelsIndexRoute
-  '/admin/course-agents/$agentId/preview': typeof AuthenticatedAdminCourseAgentsAgentIdPreviewRoute
   '/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/admin/course-agents/leads': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
@@ -291,23 +281,22 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
-  '/chat/$agentId': typeof ChatAgentIdRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
   '/_authenticated/admin/course-agents/$agentId': typeof AuthenticatedAdminCourseAgentsAgentIdRoute
   '/_authenticated/admin/course-agents/conversation': typeof AuthenticatedAdminCourseAgentsConversationRoute
-  '/_authenticated/admin/course-agents/embed': typeof AuthenticatedAdminCourseAgentsEmbedRoute
   '/_authenticated/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
-  '/_authenticated/admin/course-agents/preview': typeof AuthenticatedAdminCourseAgentsPreviewRoute
   '/_authenticated/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/_authenticated/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
   '/_authenticated/admin/course-agents/': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/_authenticated/admin/knowledge/': typeof AuthenticatedAdminKnowledgeIndexRoute
   '/_authenticated/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
-  '/_authenticated/admin/course-agents/$agentId_/preview': typeof AuthenticatedAdminCourseAgentsAgentIdPreviewRoute
   '/_authenticated/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/_authenticated/admin/course-agents/leads/': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
@@ -326,22 +315,21 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
-    | '/chat/$agentId'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
+    | '/audit/'
     | '/settings/'
+    | '/users/'
+    | '/admin/chat/$agentId'
     | '/admin/course-agents/$agentId'
     | '/admin/course-agents/conversation'
-    | '/admin/course-agents/embed'
     | '/admin/course-agents/model'
-    | '/admin/course-agents/preview'
     | '/admin/course-agents/state-machine'
     | '/admin/knowledge/$kbId'
     | '/admin/course-agents/'
     | '/admin/knowledge/'
     | '/admin/models/'
-    | '/admin/course-agents/$agentId/preview'
     | '/admin/course-agents/leads/$leadId'
     | '/admin/course-agents/leads/'
   fileRoutesByTo: FileRoutesByTo
@@ -356,23 +344,22 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
-    | '/chat/$agentId'
     | '/'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
+    | '/audit'
     | '/settings'
+    | '/users'
+    | '/admin/chat/$agentId'
     | '/admin/course-agents/$agentId'
     | '/admin/course-agents/conversation'
-    | '/admin/course-agents/embed'
     | '/admin/course-agents/model'
-    | '/admin/course-agents/preview'
     | '/admin/course-agents/state-machine'
     | '/admin/knowledge/$kbId'
     | '/admin/course-agents'
     | '/admin/knowledge'
     | '/admin/models'
-    | '/admin/course-agents/$agentId/preview'
     | '/admin/course-agents/leads/$leadId'
     | '/admin/course-agents/leads'
   id:
@@ -389,23 +376,22 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
-    | '/chat/$agentId'
     | '/_authenticated/'
     | '/_authenticated/errors/$error'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/audit/'
     | '/_authenticated/settings/'
+    | '/_authenticated/users/'
+    | '/_authenticated/admin/chat/$agentId'
     | '/_authenticated/admin/course-agents/$agentId'
     | '/_authenticated/admin/course-agents/conversation'
-    | '/_authenticated/admin/course-agents/embed'
     | '/_authenticated/admin/course-agents/model'
-    | '/_authenticated/admin/course-agents/preview'
     | '/_authenticated/admin/course-agents/state-machine'
     | '/_authenticated/admin/knowledge/$kbId'
     | '/_authenticated/admin/course-agents/'
     | '/_authenticated/admin/knowledge/'
     | '/_authenticated/admin/models/'
-    | '/_authenticated/admin/course-agents/$agentId_/preview'
     | '/_authenticated/admin/course-agents/leads/$leadId'
     | '/_authenticated/admin/course-agents/leads/'
   fileRoutesById: FileRoutesById
@@ -422,7 +408,6 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
-  ChatAgentIdRoute: typeof ChatAgentIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -518,12 +503,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/chat/$agentId': {
-      id: '/chat/$agentId'
-      path: '/chat/$agentId'
-      fullPath: '/chat/$agentId'
-      preLoaderRoute: typeof ChatAgentIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/audit/': {
+      id: '/_authenticated/audit/'
+      path: '/audit'
+      fullPath: '/audit/'
+      preLoaderRoute: typeof AuthenticatedAuditIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/errors/$error': {
       id: '/_authenticated/errors/$error'
@@ -553,6 +538,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
+    '/_authenticated/users/': {
+      id: '/_authenticated/users/'
+      path: '/users'
+      fullPath: '/users/'
+      preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/chat/$agentId': {
+      id: '/_authenticated/admin/chat/$agentId'
+      path: '/admin/chat/$agentId'
+      fullPath: '/admin/chat/$agentId'
+      preLoaderRoute: typeof AuthenticatedAdminChatAgentIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/course-agents/': {
       id: '/_authenticated/admin/course-agents/'
       path: '/admin/course-agents'
@@ -574,25 +573,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminCourseAgentsConversationRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/course-agents/embed': {
-      id: '/_authenticated/admin/course-agents/embed'
-      path: '/admin/course-agents/embed'
-      fullPath: '/admin/course-agents/embed'
-      preLoaderRoute: typeof AuthenticatedAdminCourseAgentsEmbedRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/admin/course-agents/model': {
       id: '/_authenticated/admin/course-agents/model'
       path: '/admin/course-agents/model'
       fullPath: '/admin/course-agents/model'
       preLoaderRoute: typeof AuthenticatedAdminCourseAgentsModelRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/course-agents/preview': {
-      id: '/_authenticated/admin/course-agents/preview'
-      path: '/admin/course-agents/preview'
-      fullPath: '/admin/course-agents/preview'
-      preLoaderRoute: typeof AuthenticatedAdminCourseAgentsPreviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/course-agents/state-machine': {
@@ -621,13 +606,6 @@ declare module '@tanstack/react-router' {
       path: '/admin/models'
       fullPath: '/admin/models/'
       preLoaderRoute: typeof AuthenticatedAdminModelsIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/course-agents/$agentId_/preview': {
-      id: '/_authenticated/admin/course-agents/$agentId_/preview'
-      path: '/admin/course-agents/$agentId/preview'
-      fullPath: '/admin/course-agents/$agentId/preview'
-      preLoaderRoute: typeof AuthenticatedAdminCourseAgentsAgentIdPreviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/course-agents/leads/': {
@@ -669,17 +647,17 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
+  AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
+  AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedAdminChatAgentIdRoute: typeof AuthenticatedAdminChatAgentIdRoute
   AuthenticatedAdminCourseAgentsAgentIdRoute: typeof AuthenticatedAdminCourseAgentsAgentIdRoute
   AuthenticatedAdminCourseAgentsConversationRoute: typeof AuthenticatedAdminCourseAgentsConversationRoute
-  AuthenticatedAdminCourseAgentsEmbedRoute: typeof AuthenticatedAdminCourseAgentsEmbedRoute
   AuthenticatedAdminCourseAgentsModelRoute: typeof AuthenticatedAdminCourseAgentsModelRoute
-  AuthenticatedAdminCourseAgentsPreviewRoute: typeof AuthenticatedAdminCourseAgentsPreviewRoute
   AuthenticatedAdminCourseAgentsStateMachineRoute: typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   AuthenticatedAdminKnowledgeKbIdRoute: typeof AuthenticatedAdminKnowledgeKbIdRoute
   AuthenticatedAdminCourseAgentsIndexRoute: typeof AuthenticatedAdminCourseAgentsIndexRoute
   AuthenticatedAdminKnowledgeIndexRoute: typeof AuthenticatedAdminKnowledgeIndexRoute
   AuthenticatedAdminModelsIndexRoute: typeof AuthenticatedAdminModelsIndexRoute
-  AuthenticatedAdminCourseAgentsAgentIdPreviewRoute: typeof AuthenticatedAdminCourseAgentsAgentIdPreviewRoute
   AuthenticatedAdminCourseAgentsLeadsLeadIdRoute: typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   AuthenticatedAdminCourseAgentsLeadsIndexRoute: typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
@@ -688,16 +666,15 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
+  AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
+  AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedAdminChatAgentIdRoute: AuthenticatedAdminChatAgentIdRoute,
   AuthenticatedAdminCourseAgentsAgentIdRoute:
     AuthenticatedAdminCourseAgentsAgentIdRoute,
   AuthenticatedAdminCourseAgentsConversationRoute:
     AuthenticatedAdminCourseAgentsConversationRoute,
-  AuthenticatedAdminCourseAgentsEmbedRoute:
-    AuthenticatedAdminCourseAgentsEmbedRoute,
   AuthenticatedAdminCourseAgentsModelRoute:
     AuthenticatedAdminCourseAgentsModelRoute,
-  AuthenticatedAdminCourseAgentsPreviewRoute:
-    AuthenticatedAdminCourseAgentsPreviewRoute,
   AuthenticatedAdminCourseAgentsStateMachineRoute:
     AuthenticatedAdminCourseAgentsStateMachineRoute,
   AuthenticatedAdminKnowledgeKbIdRoute: AuthenticatedAdminKnowledgeKbIdRoute,
@@ -705,8 +682,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedAdminCourseAgentsIndexRoute,
   AuthenticatedAdminKnowledgeIndexRoute: AuthenticatedAdminKnowledgeIndexRoute,
   AuthenticatedAdminModelsIndexRoute: AuthenticatedAdminModelsIndexRoute,
-  AuthenticatedAdminCourseAgentsAgentIdPreviewRoute:
-    AuthenticatedAdminCourseAgentsAgentIdPreviewRoute,
   AuthenticatedAdminCourseAgentsLeadsLeadIdRoute:
     AuthenticatedAdminCourseAgentsLeadsLeadIdRoute,
   AuthenticatedAdminCourseAgentsLeadsIndexRoute:
@@ -728,7 +703,6 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
-  ChatAgentIdRoute: ChatAgentIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

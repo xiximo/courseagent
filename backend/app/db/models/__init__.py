@@ -21,6 +21,7 @@ from app.db.models.standard import Standard
 from app.db.models.sync_job import SyncJob, SyncMode
 from app.db.models.sync_job_log import SyncJobLog
 from app.db.models.user import User
+from app.db.models.login_audit import LoginAuditLog
 
 __all__ = [
     "SyncJob",
@@ -42,6 +43,7 @@ __all__ = [
     "TextChunk",
     "IndexBatch",
     "User",
+    "LoginAuditLog",
     "CourseAgentRecord",
     "CourseAgentSessionRecord",
     "CourseAgentMessageRecord",

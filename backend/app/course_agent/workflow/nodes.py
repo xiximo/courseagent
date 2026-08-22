@@ -16,6 +16,11 @@ from app.course_agent.rag import (
     hits_to_citations_from_hits,
     retrieve_by_kb_id,
 )
+from app.course_agent.workflow.chrome import (
+    filter_branch_actions,
+    sanitize_out_of_scope,
+    sanitize_welcome,
+)
 from app.course_agent.workflow.conditions import guess_intent_from_text
 from app.course_agent.workflow.types import (
     AssistantOut,
@@ -76,9 +81,10 @@ def execute_node(
 
 
 def _entry(config: dict, turn: TurnInput | None, *, bootstrap: bool) -> NodeOutput:
-    welcome = str(config.get("welcomeText") or "您好，我是课程顾问。")
-    # 快捷按钮完全来自画布节点 config.quickActions
-    actions = [str(a).strip() for a in (config.get("quickActions") or []) if str(a).strip()]
+    welcome = sanitize_welcome(str(config.get("welcomeText") or ""))
+    actions = filter_branch_actions(
+        [str(a).strip() for a in (config.get("quickActions") or []) if str(a).strip()]
+    )
     if bootstrap or turn is None:
         return NodeOutput(
             messages=[AssistantOut(content=welcome, quick_actions=actions or None)],
@@ -109,8 +115,6 @@ def _identity(
     if state.role_status == "confirmed" and state.role:
         return NodeOutput(messages=[], intent="other", wait_for_user=False)
 
-    prompt = str(config.get("promptWhenUnknown") or "请问您的身份是？")
-    actions = ["学生课程", "教师培训", "平台服务"]
     text = (turn.text if turn else "") or ""
     guessed = guess_intent_from_text(text)
     if guessed == "restart":
@@ -127,50 +131,12 @@ def _identity(
             state_patch={"role": role, "roleStatus": "confirmed"},
         )
 
-    # LLM 轻量分类
-    parsed = _llm_json(
-        db,
-        agent_id,
-        system=(
-            "你是身份分类器。根据用户话判断 student/teacher/org，或无法判断。"
-            '只输出 JSON：{"role":"student|teacher|org|null","confirmed":bool,"reply":"中文追问","intent":"choose_role|out_of_scope|restart|other"}'
-        ),
-        user=f"用户说：{text}",
-    )
-    if parsed:
-        intent = parsed.get("intent") or "other"
-        if intent not in (
-            "choose_role",
-            "out_of_scope",
-            "restart",
-            "other",
-        ):
-            intent = "other"
-        if parsed.get("confirmed") and parsed.get("role") in (
-            "student",
-            "teacher",
-            "org",
-        ):
-            return NodeOutput(
-                messages=[],
-                intent="choose_role",
-                wait_for_user=False,
-                state_patch={
-                    "role": parsed["role"],
-                    "roleStatus": "confirmed",
-                },
-            )
-        reply = str(parsed.get("reply") or prompt)
-        return NodeOutput(
-            messages=[AssistantOut(content=reply, quick_actions=actions)],
-            intent=intent,  # type: ignore[arg-type]
-            wait_for_user=True,
-        )
-
+    # 不再追问学生/教师/机构，静默进入后续检索
     return NodeOutput(
-        messages=[AssistantOut(content=prompt, quick_actions=actions)],
+        messages=[],
         intent="other",
-        wait_for_user=True,
+        wait_for_user=False,
+        state_patch={"role": "student", "roleStatus": "confirmed"},
     )
 
 
@@ -187,6 +153,26 @@ def _slot_fill(
         return NodeOutput(messages=[], intent=guessed, wait_for_user=False)
 
     slots = config.get("slots") if isinstance(config.get("slots"), list) else []
+    default_slot_keys = {"city", "date", "format", "goal"}
+    configured_keys = {
+        str(slot.get("key"))
+        for slot in slots
+        if isinstance(slot, dict) and slot.get("key")
+    }
+    if configured_keys and configured_keys <= default_slot_keys:
+        patch_constraints: dict[str, str] = {}
+        merged = dict(state.constraint_slots())
+        for key in default_slot_keys:
+            if key not in merged:
+                patch_constraints[key] = "无特殊要求"
+                merged[key] = "无特殊要求"
+        return NodeOutput(
+            messages=[],
+            intent="ask_recommend",
+            wait_for_user=False,
+            state_patch={"constraints": {**state.constraints, **patch_constraints}},
+        )
+
     ask_one = bool(config.get("askOneMissingAtATime", True))
 
     # 入口快捷身份按钮同轮穿行到采集：不把按钮文案当约束
@@ -623,14 +609,18 @@ def _session_control(
 
 def _boundary(config: dict, turn: TurnInput | None) -> NodeOutput:
     templates = config.get("templates") if isinstance(config.get("templates"), dict) else {}
-    actions = list(config.get("quickActions") or ["学生课程", "教师培训", "平台服务", "重新开始"])
+    actions = filter_branch_actions(
+        [str(a).strip() for a in (config.get("quickActions") or []) if str(a).strip()]
+    )
     text = (turn.text if turn else "") or ""
     key = "outOfScope"
     if "会员" in text or "平台价" in text:
         key = "crossMaterial"
-    content = str(templates.get(key) or templates.get("outOfScope") or "超出服务范围。")
+    content = sanitize_out_of_scope(
+        str(templates.get(key) or templates.get("outOfScope") or "")
+    )
     return NodeOutput(
-        messages=[AssistantOut(content=content, quick_actions=actions)],
+        messages=[AssistantOut(content=content, quick_actions=actions or None)],
         intent="other",
         wait_for_user=True,
     )

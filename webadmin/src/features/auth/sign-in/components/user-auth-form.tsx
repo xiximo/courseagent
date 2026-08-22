@@ -7,7 +7,7 @@ import { Loader2, LogIn } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { login } from '@/lib/api/auth'
-import { resolveAuthRedirect } from '@/lib/auth-redirect'
+import { resolvePostLoginTarget } from '@/lib/auth/home-path'
 import { getApiErrorMessage } from '@/lib/api/client'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
@@ -63,10 +63,22 @@ export function UserAuthForm({
         password: data.password,
       })
       auth.setSession(result.accessToken, result.user)
-      navigate({
-        to: resolveAuthRedirect(redirectTo),
-        replace: true,
-      })
+      const dest = await resolvePostLoginTarget(
+        redirectTo,
+        result.user.roleCodes ?? []
+      )
+      if (dest.params?.agentId) {
+        navigate({
+          to: '/admin/chat/$agentId',
+          params: { agentId: dest.params.agentId },
+          replace: true,
+        })
+      } else {
+        navigate({
+          to: dest.to as '/admin/course-agents' | '/settings/account',
+          replace: true,
+        })
+      }
       toast.success(t('auth.welcomeBack', { name: result.user.fullName }))
     } catch (error) {
       toast.error(getApiErrorMessage(error, t('auth.loginFailed')))

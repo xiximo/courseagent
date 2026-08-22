@@ -12,8 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { AgentPreviewPanel } from './agent-preview-panel'
 import { resolveBasicSystemPrompt } from '../lib/basic-system-prompt'
+import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
 import type {
   CourseAgentConfig,
   CourseAgentKnowledgeBase,
@@ -47,7 +47,7 @@ export function BasicAgentConfigWorkspace({
   )
   const [loadingCatalog, setLoadingCatalog] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
+  const invalidateAgents = useInvalidateCourseAgents()
 
   useEffect(() => {
     setName(config.name)
@@ -114,7 +114,7 @@ export function BasicAgentConfigWorkspace({
         },
       })
       onSaved(updated)
-      setPreviewRefreshKey((k) => k + 1)
+      invalidateAgents()
       toast.success('配置已保存')
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '保存失败')
@@ -124,8 +124,7 @@ export function BasicAgentConfigWorkspace({
   }
 
   return (
-    <div className='grid min-h-[min(760px,calc(100svh-8rem))] gap-4 lg:grid-cols-[minmax(320px,420px)_1fr]'>
-      <div className='bg-card flex min-h-0 flex-col rounded-xl border'>
+    <div className='bg-card flex min-h-[min(760px,calc(100svh-8rem))] flex-col rounded-xl border'>
         <div className='border-b px-4 py-3'>
           <h2 className='font-semibold'>基础配置</h2>
           <p className='text-muted-foreground text-sm'>
@@ -293,18 +292,6 @@ export function BasicAgentConfigWorkspace({
             </Button>
           </div>
         ) : null}
-      </div>
-
-      <div className='flex min-h-0 flex-col'>
-        <AgentPreviewPanel
-          agentId={config.agentId}
-          agentName={name || config.name}
-          menuButtons={config.conversation.menuButtons}
-          compact
-          hideReset
-          refreshKey={previewRefreshKey}
-        />
-      </div>
     </div>
   )
 }

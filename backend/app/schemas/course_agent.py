@@ -28,6 +28,16 @@ class CourseAgentMessageDto(BaseModel):
     quickActions: list[str] | None = None
 
 
+class CourseAgentTraceEventDto(BaseModel):
+    id: str
+    type: str
+    title: str
+    detail: str | None = None
+    toolName: str | None = None
+    status: str | None = None
+    createdAt: str
+
+
 class CourseAgentConstraintsDto(BaseModel):
     city: str | None = None
     date: str | None = None
@@ -43,12 +53,21 @@ class CourseAgentSessionStateDto(BaseModel):
     lockedCourse: str | None = None
 
 
+class CourseAgentSessionSummaryDto(BaseModel):
+    id: str
+    agentId: str
+    title: str
+    createdAt: str
+    updatedAt: str
+
+
 class CourseAgentSessionDto(BaseModel):
     id: str
     agentId: str
     title: str
     messages: list[CourseAgentMessageDto] = Field(default_factory=list)
     state: CourseAgentSessionStateDto
+    trace: list[CourseAgentTraceEventDto] = Field(default_factory=list)
     createdAt: str
     updatedAt: str
 
@@ -168,6 +187,35 @@ class CourseAgentConversationConfigDto(BaseModel):
     outOfScopeMessage: str = ""
 
 
+class CourseAgentReactToolDto(BaseModel):
+    id: str = ""
+    name: str
+    description: str = ""
+    kind: str = "kb"
+    knowledgeBaseIds: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class CourseAgentReactConfigDto(BaseModel):
+    soul: str = ""
+    prohibitionRules: str = ""
+    maxToolRounds: int = 4
+    tools: list[CourseAgentReactToolDto] = Field(default_factory=list)
+
+
+class CourseAgentScheduleDto(BaseModel):
+    enabled: bool = False
+    intervalHours: float = 2
+    runMode: Literal["chat", "scheduled"] = "chat"
+    visibleInChat: bool = True
+    target: Literal["all_users", "members"] = "all_users"
+    onlyIfNewMessages: bool = True
+    lookbackHours: float = 24
+    taskPrompt: str = ""
+    lastRunAt: str | None = None
+    lastRunNote: str | None = None
+
+
 class CourseAgentConfigDto(BaseModel):
     agentId: str
     name: str
@@ -186,6 +234,8 @@ class CourseAgentConfigDto(BaseModel):
     knowledgeBases: list[CourseAgentKnowledgeBaseDto] = Field(default_factory=list)
     embed: CourseAgentEmbedConfigDto
     conversation: CourseAgentConversationConfigDto
+    reactConfig: CourseAgentReactConfigDto | None = None
+    schedule: CourseAgentScheduleDto | None = None
     updatedAt: str
 
 
@@ -196,7 +246,14 @@ class CourseAgentSummaryDto(BaseModel):
     status: str
     agentType: CourseAgentType = "workflow"
     isDefault: bool = False
+    visibleInChat: bool = True
+    runMode: str = "chat"
+    scheduleEnabled: bool = False
     updatedAt: str
+
+
+class DeleteCourseAgentSessionResultDto(BaseModel):
+    message: str = "会话已删除"
 
 
 class DeleteCourseAgentResultDto(BaseModel):
@@ -217,6 +274,8 @@ class CourseAgentPatchBody(BaseModel):
     knowledgeBases: list[CourseAgentKnowledgeBaseDto] | None = None
     embed: CourseAgentEmbedConfigDto | None = None
     conversation: CourseAgentConversationConfigDto | None = None
+    reactConfig: CourseAgentReactConfigDto | None = None
+    schedule: CourseAgentScheduleDto | None = None
 
 
 class SendCourseAgentMessageBody(BaseModel):
@@ -255,3 +314,31 @@ class CourseAgentLeadDetailDto(CourseAgentLeadSummaryDto):
 
 class DeleteCourseAgentLeadResultDto(BaseModel):
     message: str = "线索已删除"
+
+
+class AdminSessionRecordDto(BaseModel):
+    id: str
+    agentId: str
+    agentName: str
+    title: str
+    messageCount: int = 0
+    createdAt: str
+    updatedAt: str
+
+
+class AdminUserSessionGroupDto(BaseModel):
+    userId: str | None = None
+    username: str
+    fullName: str
+    personaLabel: str | None = None
+    sessionCount: int = 0
+    lastActiveAt: str | None = None
+    sessions: list[AdminSessionRecordDto] = Field(default_factory=list)
+
+
+class AdminSessionDetailDto(CourseAgentSessionDto):
+    agentName: str = ""
+    userId: str | None = None
+    username: str = "guest"
+    fullName: str = "游客"
+    personaLabel: str | None = None

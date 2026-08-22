@@ -8,6 +8,7 @@
   "nav": {
     "group": {
       "courseAgent": "Agent",
+      "agentChat": "Chat",
       "agentOps": "Agent ops",
       "digitalEmployees": "Digital employees",
       "harness": "Harness platform",
@@ -43,8 +44,7 @@
       "agentStateMachine": "State machine",
       "agentKnowledge": "Knowledge base",
       "agentConversation": "Conversation",
-      "agentLeads": "Customer leads",
-      "agentEmbed": "Embed & access",
+      "agentLeads": "User sessions",
       "harnessOverview": "Platform overview",
       "harnessDefaults": "Default orchestration",
       "harnessTools": "Tool catalog",
@@ -65,7 +65,7 @@
       "organizations": "Organizations",
       "roles": "Roles",
       "dataDictionary": "Data dictionary",
-      "auditManagement": "Audit management",
+      "auditManagement": "Login audit",
       "settingsSection": "Settings",
       "profile": "Profile",
       "account": "Account",
@@ -148,10 +148,10 @@
     "notModified": "Content not modified!"
   },
   "auth": {
-    "platformName": "Enterprise Standard AI Platform",
+    "platformName": "Enterprise Agent Platform",
     "platformTagline": "",
     "signInTitle": "Sign in to console",
-    "signInDescription": "Use the account assigned by your administrator.",
+    "signInDescription": "Sign in with your account.",
     "username": "Username",
     "usernamePlaceholder": "Enter username",
     "password": "Password",
@@ -498,7 +498,7 @@
   },
   "users": {
     "title": "User management",
-    "subtitle": "Manage system accounts, departments, and role assignments.",
+    "subtitle": "Manage login accounts and test personas such as fat loss, muscle gain, and chronic care.",
     "add": "Add user",
     "searchPlaceholder": "Filter users (username)…",
     "empty": "No users yet. Click Add user to create one.",

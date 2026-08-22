@@ -69,6 +69,61 @@ def ensure_platform_resource_schema(engine: Engine) -> None:
     ensure_platform_knowledge_base_schema(engine)
     ensure_platform_model_schema(engine)
     ensure_lead_schema(engine)
+    ensure_user_profile_schema(engine)
+    ensure_session_owner_schema(engine)
+
+
+def ensure_session_owner_schema(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "course_agent_session" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("course_agent_session")}
+    if "user_id" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE course_agent_session "
+                "ADD COLUMN IF NOT EXISTS user_id UUID NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_course_agent_session_user_id "
+                "ON course_agent_session (user_id)"
+            )
+        )
+        try:
+            conn.execute(
+                text(
+                    "ALTER TABLE course_agent_session "
+                    "ADD CONSTRAINT fk_course_agent_session_user "
+                    "FOREIGN KEY (user_id) REFERENCES user_account(id) "
+                    "ON DELETE SET NULL"
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Could not add course_agent_session.user_id FK; continuing without it"
+            )
+    logger.info("Added course_agent_session.user_id")
+
+
+def ensure_user_profile_schema(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "user_account" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("user_account")}
+    if "profile_json" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE user_account "
+                "ADD COLUMN IF NOT EXISTS profile_json JSONB DEFAULT '{}'::jsonb"
+            )
+        )
+    logger.info("Added user_account.profile_json")
 
 
 def ensure_lead_schema(engine: Engine) -> None:
