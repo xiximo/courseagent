@@ -21,7 +21,9 @@ from app.db.models.standard import Standard
 from app.db.models.sync_job import SyncJob, SyncMode
 from app.db.models.sync_job_log import SyncJobLog
 from app.db.models.user import User
+from app.db.models.tenant import TenantRecord
 from app.db.models.login_audit import LoginAuditLog
+from app.db.models.billing import BillingOrderRecord, UsageMonthlyRecord
 
 __all__ = [
     "SyncJob",
@@ -43,6 +45,7 @@ __all__ = [
     "TextChunk",
     "IndexBatch",
     "User",
+    "TenantRecord",
     "LoginAuditLog",
     "CourseAgentRecord",
     "CourseAgentSessionRecord",
@@ -50,4 +53,6 @@ __all__ = [
     "CourseAgentLeadRecord",
     "CourseAgentKnowledgeBaseRecord",
     "CourseAgentModelRecord",
+    "BillingOrderRecord",
+    "UsageMonthlyRecord",
 ]

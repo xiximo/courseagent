@@ -27,6 +27,7 @@ from app.db.models.attachment import (
 from app.db.models.course_agent import CourseAgentRecord
 from app.db.models.course_agent_resources import CourseAgentKnowledgeBaseRecord
 from app.db.models.standard import Standard, StandardSyncStatus
+from app.services.tenant_scope import TenantScope, apply_kb_tenant_filter
 from app.processing.figure_assets import remove_figure_assets
 from app.processing.runner import enqueue_index_all
 from app.processing.service import ProcessingService
@@ -53,9 +54,15 @@ def _owner_key(agent_id: str | None) -> str:
 
 
 class MaterialService:
-    def __init__(self, db: Session, storage: ObjectStorage | None = None) -> None:
+    def __init__(
+        self,
+        db: Session,
+        storage: ObjectStorage | None = None,
+        scope: TenantScope | None = None,
+    ) -> None:
         self.db = db
         self.storage = storage or get_storage()
+        self.scope = scope or TenantScope.unrestricted()
 
     def ensure_agent_materials(self, agent_id: str) -> list[CourseAgentKnowledgeBaseDto]:
         """兼容旧逻辑：返回曾归属该 Agent 的知识库；平台库请用 list_all。"""
@@ -70,6 +77,9 @@ class MaterialService:
         name: str,
         description: str = "",
         agent_id: str | None = None,
+        chunk_mode: str = "size",
+        chunk_max_chars: int = 1800,
+        chunk_overlap_chars: int = 200,
     ) -> CourseAgentKnowledgeBaseDto:
         material_label = f"material_{uuid.uuid4().hex[:8]}"
         while self._material_label_exists(material_label):
@@ -78,15 +88,29 @@ class MaterialService:
         owner = _owner_key(agent_id)
         standard = self._get_or_create_standard(owner, material_label, name)
         total = self.db.scalar(select(func.count()).select_from(CourseAgentKnowledgeBaseRecord)) or 0
+        owner_tenant = None if self.scope.is_platform else self.scope.tenant_id
+        from app.processing.chunker import normalize_chunk_options
+
+        chunk = normalize_chunk_options(
+            {
+                "mode": chunk_mode,
+                "max_chars": chunk_max_chars,
+                "overlap_chars": chunk_overlap_chars,
+            }
+        )
         record = CourseAgentKnowledgeBaseRecord(
             id=f"kb_{uuid.uuid4().hex[:8]}",
             agent_id=agent_id,
+            tenant_id=owner_tenant,
             material_label=material_label,
             name=name,
             description=description,
             role="",
             standard_id=standard.id,
             status="ready",
+            chunk_mode=chunk.mode,
+            chunk_max_chars=chunk.max_chars,
+            chunk_overlap_chars=chunk.overlap_chars,
             sort_order=int(total),
         )
         self.db.add(record)
@@ -103,10 +127,33 @@ class MaterialService:
         *,
         name: str,
         description: str = "",
+        chunk_mode: str | None = None,
+        chunk_max_chars: int | None = None,
+        chunk_overlap_chars: int | None = None,
     ) -> CourseAgentKnowledgeBaseDto:
         record = self._get_kb_by_id(kb_id)
+        from app.processing.chunker import normalize_chunk_options
+
+        previous = normalize_chunk_options(record)
+        incoming = normalize_chunk_options(
+            {
+                "mode": chunk_mode if chunk_mode is not None else previous.mode,
+                "max_chars": (
+                    chunk_max_chars if chunk_max_chars is not None else previous.max_chars
+                ),
+                "overlap_chars": (
+                    chunk_overlap_chars
+                    if chunk_overlap_chars is not None
+                    else previous.overlap_chars
+                ),
+            }
+        )
+        chunk_changed = incoming != previous
         record.name = name
         record.description = description
+        record.chunk_mode = incoming.mode
+        record.chunk_max_chars = incoming.max_chars
+        record.chunk_overlap_chars = incoming.overlap_chars
         record.updated_at = datetime.now(UTC)
 
         standard = self.db.get(Standard, record.standard_id)
@@ -115,7 +162,15 @@ class MaterialService:
 
         self.db.commit()
         self.db.refresh(record)
-        return self._kb_to_dto(record)
+        dto = self._kb_to_dto(record)
+        if chunk_changed and dto.documentCount > 0:
+            try:
+                self.reindex_material(record.material_label)
+                self.db.refresh(record)
+                return self._kb_to_dto(record)
+            except ApiBusinessError:
+                return dto
+        return dto
 
     def delete_knowledge_base(self, kb_id: str) -> None:
         record = self._get_kb_by_id(kb_id)
@@ -304,7 +359,10 @@ class MaterialService:
                 return first.standard_id
         return None
 
-    def list_standard_ids(self, agent_id: str) -> list[uuid.UUID]:
+    def list_kb_records_for_agent(
+        self, agent_id: str
+    ) -> list[CourseAgentKnowledgeBaseRecord]:
+        """顾问绑定库 → 历史挂靠库 → 本机构全部知识库。"""
         self._ensure_migrated(agent_id)
         row = self._get_agent(agent_id)
         cfg = dict(row.config_json or {})
@@ -314,30 +372,59 @@ class MaterialService:
             if str(item).strip()
         ]
         if bound_ids:
-            return self.list_standard_ids_by_kb_ids(bound_ids)
+            stmt = select(CourseAgentKnowledgeBaseRecord).where(
+                CourseAgentKnowledgeBaseRecord.id.in_(bound_ids)
+            )
+            stmt = apply_kb_tenant_filter(
+                stmt, TenantScope(tenant_id=row.tenant_id, is_platform=False)
+            )
+            by_id = {item.id: item for item in self.db.scalars(stmt).all()}
+            return [by_id[kb_id] for kb_id in bound_ids if kb_id in by_id]
+        owned = self._list_kb_rows(agent_id)
+        if owned:
+            return owned
+        tenant_scope = TenantScope(tenant_id=row.tenant_id, is_platform=False)
+        return list(
+            self.db.scalars(
+                apply_kb_tenant_filter(
+                    select(CourseAgentKnowledgeBaseRecord).order_by(
+                        CourseAgentKnowledgeBaseRecord.sort_order,
+                        CourseAgentKnowledgeBaseRecord.created_at,
+                    ),
+                    tenant_scope,
+                )
+            ).all()
+        )
+
+    def list_kb_ids_for_agent(self, agent_id: str) -> list[str]:
+        return [kb.id for kb in self.list_kb_records_for_agent(agent_id)]
+
+    def list_standard_ids(self, agent_id: str) -> list[uuid.UUID]:
         return [
             kb.standard_id
-            for kb in self._list_kb_rows(agent_id)
+            for kb in self.list_kb_records_for_agent(agent_id)
             if kb.standard_id is not None
         ]
 
     def list_standard_ids_by_kb_ids(self, kb_ids: list[str]) -> list[uuid.UUID]:
         if not kb_ids:
             return []
-        rows = self.db.scalars(
-            select(CourseAgentKnowledgeBaseRecord).where(
-                CourseAgentKnowledgeBaseRecord.id.in_(kb_ids)
-            )
-        ).all()
+        stmt = select(CourseAgentKnowledgeBaseRecord).where(
+            CourseAgentKnowledgeBaseRecord.id.in_(kb_ids)
+        )
+        stmt = apply_kb_tenant_filter(stmt, self.scope)
+        rows = self.db.scalars(stmt).all()
         by_id = {row.id: row.standard_id for row in rows}
         return [by_id[kb_id] for kb_id in kb_ids if kb_id in by_id]
 
     def list_all_knowledge_bases(self) -> list[CourseAgentKnowledgeBaseDto]:
-        rows = self.db.scalars(
+        stmt = apply_kb_tenant_filter(
             select(CourseAgentKnowledgeBaseRecord).order_by(
                 CourseAgentKnowledgeBaseRecord.updated_at.desc()
-            )
-        ).all()
+            ),
+            self.scope,
+        )
+        rows = self.db.scalars(stmt).all()
         return [self._kb_to_dto(row) for row in rows]
 
     def get_kb_name_for_role(self, agent_id: str, role: str) -> str | None:
@@ -362,6 +449,13 @@ class MaterialService:
                 "materialLabel": record.material_label,
                 "standardId": str(record.standard_id),
                 "status": status,
+                "chunkMode": getattr(record, "chunk_mode", None) or "size",
+                "chunkMaxChars": int(getattr(record, "chunk_max_chars", None) or 1800),
+                "chunkOverlapChars": (
+                    int(record.chunk_overlap_chars)
+                    if getattr(record, "chunk_overlap_chars", None) is not None
+                    else 200
+                ),
                 **stats,
             }
         )
@@ -384,7 +478,7 @@ class MaterialService:
 
     def _get_kb_by_id(self, kb_id: str) -> CourseAgentKnowledgeBaseRecord:
         record = self.db.get(CourseAgentKnowledgeBaseRecord, kb_id)
-        if record is None:
+        if record is None or not self.scope.allows_resource(record.tenant_id):
             raise ApiBusinessError("NOT_FOUND", "知识库不存在", 404)
         return record
 
@@ -396,7 +490,7 @@ class MaterialService:
                 CourseAgentKnowledgeBaseRecord.material_label == material_label,
             )
         )
-        if record is None:
+        if record is None or not self.scope.allows_resource(record.tenant_id):
             raise ApiBusinessError(
                 "INVALID_MATERIAL",
                 f"知识库 {material_label} 不存在",

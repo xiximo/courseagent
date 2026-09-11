@@ -396,10 +396,7 @@ def _rag_generate(
         return NodeOutput(
             messages=[
                 AssistantOut(
-                    content=(
-                        "当前绑定知识库中暂未检索到与您问题直接相关的资料片段。"
-                        "请确认文档已完成索引，或联系人工客服。"
-                    ),
+                    content="该问题不在我的知识范围内",
                     quick_actions=actions or ["重新开始"],
                 )
             ],

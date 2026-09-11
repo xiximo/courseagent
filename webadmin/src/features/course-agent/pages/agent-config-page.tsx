@@ -1,9 +1,8 @@
-import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, MessageSquare, Play } from 'lucide-react'
+import { ArrowLeft, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
-import { runCourseAgentSchedule, updateCourseAgent } from '@/lib/api/course-agent'
+import { updateCourseAgent } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
 import { AppPageHeader } from '@/components/app-page-header'
 import { Main } from '@/components/layout/main'
@@ -17,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useAgentConsolePaths } from '@/lib/auth/console-paths'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import { agentTypeLabel } from '../components/create-agent-dialog'
 import { BasicAgentConfigWorkspace } from '../components/basic-agent-config-workspace'
@@ -27,7 +27,7 @@ import {
   useAgentConfig,
 } from '../context/agent-config-context'
 import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
-import { isAgentVisibleInChat, isScheduledHarnessAgent } from '../lib/agent-schedule'
+import { isAgentVisibleInChat } from '../lib/agent-schedule'
 import type { CourseAgentStatus } from '../data/types'
 
 type AgentConfigPageProps = {
@@ -77,7 +77,7 @@ function AgentConfigWorkspace() {
 
 function AgentConfigPageBody() {
   const { config, loading, error, canConfig, setConfig } = useAgentConfig()
-  const [runningSchedule, setRunningSchedule] = useState(false)
+  const agentPaths = useAgentConsolePaths()
   const invalidateAgents = useInvalidateCourseAgents()
 
   if (loading) {
@@ -105,26 +105,12 @@ function AgentConfigPageBody() {
     }
   }
 
-  const handleRunSchedule = async () => {
-    setRunningSchedule(true)
-    try {
-      const updated = await runCourseAgentSchedule(config.agentId)
-      setConfig(updated)
-      invalidateAgents()
-      toast.success(updated.schedule?.lastRunNote || '定时任务已执行')
-    } catch (e) {
-      toast.error(e instanceof ApiClientError ? e.message : '执行失败')
-    } finally {
-      setRunningSchedule(false)
-    }
-  }
-
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-4'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div className='space-y-2'>
           <Button variant='ghost' size='sm' asChild className='-ml-2 h-8 px-2'>
-            <Link to='/admin/course-agents'>
+            <Link to={agentPaths.list}>
               <ArrowLeft className='mr-1 size-4' />
               返回列表
             </Link>
@@ -164,17 +150,6 @@ function AgentConfigPageBody() {
               </SelectContent>
             </Select>
           </div>
-          {isScheduledHarnessAgent(config) ? (
-            <Button
-              size='sm'
-              variant='outline'
-              disabled={!canConfig || runningSchedule}
-              onClick={() => void handleRunSchedule()}
-            >
-              <Play className='mr-1 size-4' />
-              {runningSchedule ? '执行中…' : '立即执行'}
-            </Button>
-          ) : null}
           {isAgentVisibleInChat(config) ? (
             <Button size='sm' asChild>
               <Link to='/admin/chat/$agentId' params={{ agentId: config.agentId }}>

@@ -136,16 +136,25 @@ class CourseAgentKnowledgeBaseDto(BaseModel):
     chunkCount: int = 0
     lastIndexedAt: str = ""
     status: str = "ready"
+    chunkMode: str = "size"
+    chunkMaxChars: int = 1800
+    chunkOverlapChars: int = 200
 
 
 class CreateCourseKnowledgeBaseBody(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = ""
+    chunkMode: str = "size"
+    chunkMaxChars: int = 1800
+    chunkOverlapChars: int = 200
 
 
 class UpdateCourseKnowledgeBaseBody(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = ""
+    chunkMode: str | None = None
+    chunkMaxChars: int | None = None
+    chunkOverlapChars: int | None = None
 
 
 class DeleteCourseKnowledgeBaseResultDto(BaseModel):
@@ -249,6 +258,7 @@ class CourseAgentSummaryDto(BaseModel):
     visibleInChat: bool = True
     runMode: str = "chat"
     scheduleEnabled: bool = False
+    tenantId: str | None = None
     updatedAt: str
 
 

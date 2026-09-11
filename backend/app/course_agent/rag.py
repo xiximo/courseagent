@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session
 from app.course_agent.material_service import MaterialService
 from app.course_agent.state_machine import Citation
 from app.db.models.attachment import Attachment
+from app.db.models.course_agent import CourseAgentRecord
 from app.indexing.service import IndexingService
 from app.schemas.indexing import ChunkSearchHitDto
+from app.services.tenant_scope import TenantScope
 
 
 def _normalize_doc_label(label: str) -> str:
@@ -103,7 +105,16 @@ def enrich_citations_with_attachments(
 
 
 def list_standard_ids_for_agent(db: Session, agent_id: str) -> list[uuid.UUID]:
-    return MaterialService(db).list_standard_ids(agent_id)
+    return _material_for_agent(db, agent_id).list_standard_ids(agent_id)
+
+
+def _material_for_agent(db: Session, agent_id: str) -> MaterialService:
+    agent = db.get(CourseAgentRecord, agent_id)
+    tenant_id = agent.tenant_id if agent is not None else None
+    return MaterialService(
+        db,
+        scope=TenantScope(tenant_id=tenant_id, is_platform=False),
+    )
 
 
 def retrieve_for_agent(
@@ -145,11 +156,13 @@ def retrieve_by_kb_id(
     kb_id: str,
     query: str,
     top_k: int = 8,
+    agent_id: str | None = None,
 ) -> list[ChunkSearchHitDto]:
-    """仅在指定知识库（平台 KB id）内检索，禁止跨库。"""
+    """仅在指定知识库（平台 KB id）内检索，禁止跨库；有 agent 时限制在本机构。"""
     if not kb_id or str(kb_id).startswith("kb_material_"):
         return []
-    ids = MaterialService(db).list_standard_ids_by_kb_ids([str(kb_id)])
+    material = _material_for_agent(db, agent_id) if agent_id else MaterialService(db)
+    ids = material.list_standard_ids_by_kb_ids([str(kb_id)])
     if not ids:
         return []
     try:
@@ -172,7 +185,7 @@ def retrieve_for_role(
     top_k: int = 8,
 ) -> list[ChunkSearchHitDto]:
     """按身份优先检索；若无 role 专属库，则回退到 Agent 已绑定知识库。"""
-    material = MaterialService(db)
+    material = _material_for_agent(db, agent_id)
     standard_id = material.resolve_standard_id(agent_id, role)
     if standard_id is not None:
         try:

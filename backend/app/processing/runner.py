@@ -114,6 +114,7 @@ def _execute_standard(standard_id: uuid.UUID, action: str) -> None:
         elif action == "index_all":
             from app.indexing.service import IndexingService
 
+            service.chunk_all_for_standard(standard_id)
             IndexingService(db).index_all_for_standard(standard_id)
     except Exception:
         logger.exception("Standard processing failed: %s (%s)", standard_id, action)

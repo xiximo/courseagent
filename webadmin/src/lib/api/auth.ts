@@ -3,6 +3,8 @@ import {
   mockChangePassword,
   mockFetchCurrentUser,
   mockLogin,
+  mockRegisterMember,
+  mockRegisterOrg,
 } from '@/lib/mock/auth-handlers'
 import { apiFetch, readEnvelope } from './client'
 
@@ -16,7 +18,25 @@ export type AuthUserProfile = {
   deptId: string | null
   status: AccountStatus
   roleCodes: string[]
+  planCode?: string
+  tenantId?: string | null
+  tenantName?: string | null
+  tenantSlug?: string | null
   lastLoginAt: string | null
+}
+
+export type RegisterOrgBody = {
+  orgName: string
+  contactName: string
+  username: string
+  password: string
+}
+
+export type RegisterMemberBody = {
+  slug: string
+  fullName: string
+  username: string
+  password: string
 }
 
 export type LoginResponse = {
@@ -43,6 +63,26 @@ export type ChangePasswordResult = {
 export async function login(body: LoginBody): Promise<LoginResponse> {
   if (isDevMock()) return mockLogin(body)
   const res = await apiFetch('POST', '/api/v1/auth/login', body, {
+    skipAuth: true,
+  })
+  return readEnvelope<LoginResponse>(res)
+}
+
+export async function registerOrganization(
+  body: RegisterOrgBody
+): Promise<LoginResponse> {
+  if (isDevMock()) return mockRegisterOrg(body)
+  const res = await apiFetch('POST', '/api/v1/auth/register-org', body, {
+    skipAuth: true,
+  })
+  return readEnvelope<LoginResponse>(res)
+}
+
+export async function registerMember(
+  body: RegisterMemberBody
+): Promise<LoginResponse> {
+  if (isDevMock()) return mockRegisterMember(body)
+  const res = await apiFetch('POST', '/api/v1/auth/register-member', body, {
     skipAuth: true,
   })
   return readEnvelope<LoginResponse>(res)

@@ -19,7 +19,13 @@ from app.schemas.auth import (
 from app.schemas.common import ApiResponse, success
 from app.services.login_audit import record_login, resolve_client_ip
 from app.services.password import hash_password, verify_password
-from app.services.users import get_user_by_username, to_auth_profile
+from app.schemas.tenants import RegisterMemberBody, RegisterOrgBody
+from app.services.tenants import (
+    register_member,
+    register_organization,
+    to_auth_profile_with_tenant,
+)
+from app.services.users import get_user_by_username
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -46,7 +52,7 @@ def login(
     db.commit()
     db.refresh(user)
 
-    profile = to_auth_profile(user)
+    profile = to_auth_profile_with_tenant(db, user)
     token = create_access_token(user.username, settings)
 
     return success(
@@ -62,6 +68,22 @@ def login(
 @router.get("/me", response_model=ApiResponse[AuthUserProfile])
 def me(current_user: Annotated[AuthUserProfile, Depends(get_current_user)]):
     return success(current_user)
+
+
+@router.post("/register-org", response_model=ApiResponse[LoginResponse])
+def register_org(
+    body: RegisterOrgBody,
+    db: Session = Depends(get_db),
+):
+    return success(register_organization(db, body), message="机构空间已开通")
+
+
+@router.post("/register-member", response_model=ApiResponse[LoginResponse])
+def register_org_member(
+    body: RegisterMemberBody,
+    db: Session = Depends(get_db),
+):
+    return success(register_member(db, body), message="已加入机构")
 
 
 @router.post(

@@ -4,6 +4,7 @@ import { getKnowledgeBase } from '@/lib/api/course-agent'
 import { ApiClientError } from '@/lib/api/client'
 import { AppErrorAlert } from '@/components/app-error-alert'
 import { Button } from '@/components/ui/button'
+import { useKnowledgeConsolePaths } from '@/lib/auth/console-paths'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import { KnowledgeBaseDetail } from '../components/knowledge-base-detail'
 import type { CourseAgentKnowledgeBase } from '../data/types'
@@ -15,12 +16,12 @@ type AgentKnowledgeDetailPageProps = {
 export function AgentKnowledgeDetailPage({ kbId }: AgentKnowledgeDetailPageProps) {
   const { can } = useAppPermissions()
   const canConfig = can('course_agent_config')
+  const knowledgePaths = useKnowledgeConsolePaths()
   const [knowledgeBase, setKnowledgeBase] = useState<CourseAgentKnowledgeBase | null>(
     null
   )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
-
   const reload = useCallback(async () => {
     setLoading(true)
     setError(undefined)
@@ -49,13 +50,14 @@ export function AgentKnowledgeDetailPage({ kbId }: AgentKnowledgeDetailPageProps
           <p className='text-muted-foreground'>未找到该知识库</p>
         )}
         <Button asChild variant='outline'>
-          <Link to='/admin/knowledge'>返回列表</Link>
+          <Link to={knowledgePaths.list}>返回列表</Link>
         </Button>
       </div>
     )
   }
 
   return (
+    <div className='space-y-4'>
     <KnowledgeBaseDetail
       knowledgeBase={knowledgeBase}
       readOnly={!canConfig}
@@ -64,5 +66,6 @@ export function AgentKnowledgeDetailPage({ kbId }: AgentKnowledgeDetailPageProps
         // 删除后由详情组件自行导航回列表
       }}
     />
+    </div>
   )
 }

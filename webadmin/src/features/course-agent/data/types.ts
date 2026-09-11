@@ -169,6 +169,9 @@ export type CourseAgentKnowledgeBase = {
   chunkCount: number
   lastIndexedAt: string
   status: 'ready' | 'indexing' | 'error'
+  chunkMode?: 'size' | 'chapter' | string
+  chunkMaxChars?: number
+  chunkOverlapChars?: number
 }
 
 export type CourseMaterialDocument = {
@@ -328,6 +331,7 @@ export type CourseAgentSummary = Pick<
   visibleInChat?: boolean
   runMode?: 'chat' | 'scheduled' | string
   scheduleEnabled?: boolean
+  tenantId?: string | null
 }
 
 export type CreateCourseAgentInput = {

@@ -40,7 +40,7 @@ const AGENT_TYPE_OPTIONS: {
     type: 'autonomous',
     title: 'Harness',
     description:
-      '工具编排：知识库检索 + 用户画像读写，结合 Soul 与禁止规则自主规划问答。',
+      '工具编排：知识库检索 + 班型查询，结合 Soul 与禁止规则自主规划问答。',
     icon: Sparkles,
   },
 ]
@@ -49,20 +49,26 @@ type CreateAgentDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated?: (agentId: string) => void
+  allowedTypes?: CourseAgentType[]
 }
 
 export function CreateAgentDialog({
   open,
   onOpenChange,
   onCreated,
+  allowedTypes,
 }: CreateAgentDialogProps) {
-  const [agentType, setAgentType] = useState<CourseAgentType>('workflow')
+  const typeOptions = AGENT_TYPE_OPTIONS.filter((option) =>
+    allowedTypes ? allowedTypes.includes(option.type) : true
+  )
+  const defaultType = typeOptions[0]?.type ?? 'basic'
+  const [agentType, setAgentType] = useState<CourseAgentType>(defaultType)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const reset = () => {
-    setAgentType('workflow')
+    setAgentType(defaultType)
     setName('')
     setDescription('')
   }
@@ -110,7 +116,7 @@ export function CreateAgentDialog({
           <div className='space-y-2'>
             <Label>Agent 类型</Label>
             <div className='grid gap-2'>
-              {AGENT_TYPE_OPTIONS.map((option) => {
+              {typeOptions.map((option) => {
                 const Icon = option.icon
                 const selected = agentType === option.type
                 return (

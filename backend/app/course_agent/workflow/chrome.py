@@ -23,7 +23,7 @@ COURSE_WELCOME_MARKERS = (
 
 GENERIC_WELCOME = "您好，请问有什么可以帮您？"
 GENERIC_IDENTITY_PROMPT = "请问有什么可以帮您？"
-GENERIC_OUT_OF_SCOPE = "该问题暂时无法回答，请换一种方式描述您的需求。"
+GENERIC_OUT_OF_SCOPE = "该问题不在我的知识范围内"
 
 
 def filter_branch_actions(actions: list[str] | None) -> list[str]:

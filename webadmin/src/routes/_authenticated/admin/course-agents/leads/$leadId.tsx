@@ -8,7 +8,7 @@ export const Route = createFileRoute(
   '/_authenticated/admin/course-agents/leads/$leadId'
 )({
   beforeLoad: () => {
-    appRouteGuard('/admin/course-agents')
+    appRouteGuard('/admin/course-agents/leads')
   },
   component: function AgentLeadDetailRoute() {
     const { leadId } = Route.useParams()

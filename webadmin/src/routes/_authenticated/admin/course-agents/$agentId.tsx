@@ -1,11 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { AgentConfigPage } from '@/features/course-agent/pages/agent-config-page'
-import { appRouteGuard } from '@/lib/auth/route-guard'
+import { appRouteGuard, redirectIfPlatform } from '@/lib/auth/route-guard'
 
 export const Route = createFileRoute(
   '/_authenticated/admin/course-agents/$agentId'
 )({
-  beforeLoad: () => {
+  beforeLoad: ({ params }) => {
+    redirectIfPlatform('/saasadmin/agents/$agentId', { agentId: params.agentId })
     appRouteGuard('/admin/course-agents')
   },
   component: function AgentConfigRoute() {

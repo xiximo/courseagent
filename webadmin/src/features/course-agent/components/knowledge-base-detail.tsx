@@ -10,6 +10,7 @@ import {
   updateKnowledgeBase,
   uploadCourseMaterial,
 } from '@/lib/api/course-agent'
+import { useKnowledgeConsolePaths } from '@/lib/auth/console-paths'
 import { ApiClientError } from '@/lib/api/client'
 import { AppErrorAlert } from '@/components/app-error-alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -46,6 +47,14 @@ import type {
   CourseAgentKnowledgeBase,
   CourseMaterialDocument,
 } from '../data/types'
+import { KnowledgeBaseChunkFields } from './knowledge-base-chunk-fields'
+import {
+  chunkSettingSummary,
+  DEFAULT_CHUNK_MAX_CHARS,
+  DEFAULT_CHUNK_OVERLAP_CHARS,
+  normalizeChunkMode,
+  type KnowledgeChunkMode,
+} from '../lib/knowledge-base-chunk'
 import {
   formatFileSize,
   knowledgeBaseRoleLabel,
@@ -71,6 +80,7 @@ export function KnowledgeBaseDetail({
   onKnowledgeBaseDeleted,
 }: KnowledgeBaseDetailProps) {
   const navigate = useNavigate()
+  const knowledgePaths = useKnowledgeConsolePaths()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [documents, setDocuments] = useState<CourseMaterialDocument[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,6 +101,15 @@ export function KnowledgeBaseDetail({
   const [editName, setEditName] = useState(knowledgeBase.name)
   const [editDescription, setEditDescription] = useState(
     knowledgeBase.description ?? ''
+  )
+  const [editChunkMode, setEditChunkMode] = useState<KnowledgeChunkMode>(
+    normalizeChunkMode(knowledgeBase.chunkMode)
+  )
+  const [editChunkMaxChars, setEditChunkMaxChars] = useState(
+    knowledgeBase.chunkMaxChars || DEFAULT_CHUNK_MAX_CHARS
+  )
+  const [editChunkOverlapChars, setEditChunkOverlapChars] = useState(
+    knowledgeBase.chunkOverlapChars ?? DEFAULT_CHUNK_OVERLAP_CHARS
   )
   const [savingKb, setSavingKb] = useState(false)
   const [deletingKb, setDeletingKb] = useState(false)
@@ -115,7 +134,19 @@ export function KnowledgeBaseDetail({
   useEffect(() => {
     setEditName(knowledgeBase.name)
     setEditDescription(knowledgeBase.description ?? '')
-  }, [knowledgeBase.id, knowledgeBase.name, knowledgeBase.description])
+    setEditChunkMode(normalizeChunkMode(knowledgeBase.chunkMode))
+    setEditChunkMaxChars(knowledgeBase.chunkMaxChars || DEFAULT_CHUNK_MAX_CHARS)
+    setEditChunkOverlapChars(
+      knowledgeBase.chunkOverlapChars ?? DEFAULT_CHUNK_OVERLAP_CHARS
+    )
+  }, [
+    knowledgeBase.id,
+    knowledgeBase.name,
+    knowledgeBase.description,
+    knowledgeBase.chunkMode,
+    knowledgeBase.chunkMaxChars,
+    knowledgeBase.chunkOverlapChars,
+  ])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -196,6 +227,9 @@ export function KnowledgeBaseDetail({
       const kb = await updateKnowledgeBase(knowledgeBase.id, {
         name: trimmed,
         description: editDescription.trim(),
+        chunkMode: editChunkMode,
+        chunkMaxChars: editChunkMaxChars,
+        chunkOverlapChars: editChunkOverlapChars,
       })
       onKnowledgeBaseUpdated(kb)
       setEditOpen(false)
@@ -213,7 +247,7 @@ export function KnowledgeBaseDetail({
       const result = await deleteKnowledgeBase(knowledgeBase.id)
       onKnowledgeBaseDeleted?.(knowledgeBase.id)
       toast.success(result.message || '知识库已删除')
-      void navigate({ to: '/admin/knowledge' })
+      void navigate({ to: knowledgePaths.list })
     } catch (e) {
       toast.error(e instanceof ApiClientError ? e.message : '删除失败')
     } finally {
@@ -227,7 +261,7 @@ export function KnowledgeBaseDetail({
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div className='space-y-2'>
           <Button variant='ghost' size='sm' className='-ml-2 h-8 px-2' asChild>
-            <Link to='/admin/knowledge'>
+            <Link to={knowledgePaths.list}>
               <ArrowLeft className='mr-1 size-4' />
               返回知识库列表
             </Link>
@@ -250,6 +284,8 @@ export function KnowledgeBaseDetail({
             </Badge>
             <span className='text-muted-foreground text-sm'>
               {knowledgeBase.documentCount} 文档 · {knowledgeBase.chunkCount} 块
+              {' · '}
+              {chunkSettingSummary(knowledgeBase)}
             </span>
           </div>
         </div>
@@ -502,6 +538,15 @@ export function KnowledgeBaseDetail({
                 rows={3}
               />
             </div>
+            <KnowledgeBaseChunkFields
+              mode={editChunkMode}
+              maxChars={editChunkMaxChars}
+              overlapChars={editChunkOverlapChars}
+              disabled={savingKb}
+              onModeChange={setEditChunkMode}
+              onMaxCharsChange={setEditChunkMaxChars}
+              onOverlapCharsChange={setEditChunkOverlapChars}
+            />
           </div>
           <DialogFooter>
             <Button type='button' variant='outline' onClick={() => setEditOpen(false)}>

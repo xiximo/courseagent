@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.course_agent.data_migration import migrate_all_agents_from_config_json
 from app.db.base import Base
 from app.db.models.user import AccountStatus, User
 from app.db.session import SessionLocal, engine
+from app.services.billing import PLAN_PRO
 from app.services.llm_settings import get_or_create_llm_config
 from app.services.password import hash_password
 from app.services.users import ensure_persona_test_users
@@ -33,6 +35,9 @@ def init_database() -> None:
         ensure_persona_test_users(db)
         get_or_create_llm_config(db)
         migrate_all_agents_from_config_json(db)
+        from app.services.tenant_workspace import backfill_tenant_admins
+
+        backfill_tenant_admins(db)
 
 
 def _ensure_admin_user(db: Session) -> None:
@@ -40,6 +45,10 @@ def _ensure_admin_user(db: Session) -> None:
     username = settings.init_admin_username
     existing = db.scalar(select(User).where(User.username == username))
     if existing:
+        if getattr(existing, "plan_code", "free") != PLAN_PRO:
+            existing.plan_code = PLAN_PRO
+            existing.plan_upgraded_at = datetime.now(UTC)
+            db.commit()
         return
     db.add(
         User(
@@ -48,6 +57,8 @@ def _ensure_admin_user(db: Session) -> None:
             full_name="系统管理员",
             status=AccountStatus.enabled,
             role_codes=["sys_admin", "SYSTEM_ADMIN"],
+            plan_code=PLAN_PRO,
+            plan_upgraded_at=datetime.now(UTC),
         )
     )
     db.commit()

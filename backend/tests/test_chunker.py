@@ -1,4 +1,8 @@
-from app.processing.chunker import chunk_attachment_text
+from app.processing.chunker import (
+    ChunkOptions,
+    chunk_attachment_text,
+    normalize_chunk_options,
+)
 
 
 SAMPLE_STANDARD_MD = """<!-- page:1 -->
@@ -133,3 +137,47 @@ def test_table_chunk_includes_section_context() -> None:
     assert table.position_label == "第一章　平台定位"
     assert table.content_json is not None
     assert table.content_json["headers"] == ["模块", "作用"]
+
+
+def test_normalize_chunk_options_clamps() -> None:
+    opts = normalize_chunk_options(
+        {"mode": "chapter", "max_chars": 50, "overlap_chars": 9999}
+    )
+    assert opts.mode == "chapter"
+    assert opts.max_chars == 200
+    assert opts.overlap_chars == 100
+
+
+def test_chunk_by_size_respects_overlap() -> None:
+    text = "甲" * 500 + "乙" * 500
+    chunks = chunk_attachment_text(
+        text,
+        doc_role="body",
+        options=ChunkOptions(mode="size", max_chars=400, overlap_chars=80),
+    )
+    assert len(chunks) >= 3
+    assert all(len(item.content) <= 400 for item in chunks)
+    assert chunks[0].content[:10] == "甲" * 10
+    assert "乙" in chunks[-1].content
+
+
+def test_chunk_by_chapter_keeps_section() -> None:
+    text = """# 第1章 范围
+
+范围正文第一段。
+
+# 第2章 试验方法
+
+试验方法正文。
+"""
+    chunks = chunk_attachment_text(
+        text,
+        doc_role="body",
+        options=ChunkOptions(mode="chapter", max_chars=1800, overlap_chars=200),
+    )
+    labels = [item.position_label for item in chunks]
+    assert any(label and "第1章" in label for label in labels)
+    assert any(label and "第2章" in label for label in labels)
+    first = next(item for item in chunks if item.position_label and "第1章" in item.position_label)
+    assert "范围正文" in first.content
+    assert "试验方法正文" not in first.content

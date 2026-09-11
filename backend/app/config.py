@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     embedding_worker_timeout_seconds: int = 600
     embedding_worker_token: str = ""
     index_auto_on_chunk: bool = False
+    chunk_max_chars: int = 1800
+    chunk_overlap_chars: int = 200
 
     llm_enabled: bool = True
     doubao_api_key: str = ""
@@ -81,6 +83,22 @@ class Settings(BaseSettings):
     qa_retrieval_top_k: int = 8
     harness_scheduler_enabled: bool = True
     harness_scheduler_poll_seconds: int = 30
+
+    public_base_url: str = "http://127.0.0.1:8080"
+    frontend_base_url: str = "http://localhost:5173"
+    alipay_sandbox: bool = True
+    alipay_allow_mock: bool = True
+    alipay_app_id: str = ""
+    alipay_app_private_key: str = ""
+    alipay_app_private_key_path: str = ""
+    alipay_public_key: str = ""
+    alipay_public_key_path: str = ""
+    alipay_gateway: str = ""
+    alipay_notify_url: str = ""
+    alipay_return_url: str = ""
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_currency: str = "cny"
 
     @model_validator(mode="after")
     def normalize_embedding_config(self) -> Self:

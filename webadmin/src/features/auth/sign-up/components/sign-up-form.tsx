@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2, UserPlus } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { Loader2, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { IconFacebook, IconGithub } from '@/assets/brand-icons'
-import { sleep, cn } from '@/lib/utils'
+import { registerOrganization } from '@/lib/api/auth'
+import { getApiErrorMessage } from '@/lib/api/client'
+import { useAuthStore } from '@/stores/auth-store'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -20,47 +23,62 @@ import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z
   .object({
-    email: z.email({
-      error: (iss) =>
-        iss.input === '' ? 'Please enter your email.' : undefined,
-    }),
+    orgName: z.string().trim().min(2, '请填写机构名称'),
+    contactName: z.string().trim().min(2, '请填写联系人姓名'),
+    username: z.string().trim().min(2, '用户名至少 2 位'),
     password: z
       .string()
-      .min(1, 'Please enter your password.')
-      .min(7, 'Password must be at least 7 characters long.'),
-    confirmPassword: z.string().min(1, 'Please confirm your password.'),
+      .min(1, '请输入密码')
+      .min(6, '密码至少 6 位'),
+    confirmPassword: z.string().min(1, '请再次输入密码'),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match.",
+    message: '两次输入的密码不一致',
     path: ['confirmPassword'],
   })
 
 export function SignUpForm({
   className,
+  intent,
   ...props
-}: React.HTMLAttributes<HTMLFormElement>) {
+}: React.HTMLAttributes<HTMLFormElement> & { intent?: 'pro' }) {
   const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()
+  const { auth } = useAuthStore()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: '',
+      orgName: '',
+      contactName: '',
+      username: '',
       password: '',
       confirmPassword: '',
     },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
-
-    toast.promise(sleep(2000), {
-      loading: 'Creating account...',
-      success: () => {
-        setIsLoading(false)
-        return `Account created for ${data.email}.`
-      },
-      error: 'Error',
-    })
+    try {
+      const result = await registerOrganization({
+        orgName: data.orgName.trim(),
+        contactName: data.contactName.trim(),
+        username: data.username.trim(),
+        password: data.password,
+      })
+      auth.setSession(result.accessToken, result.user)
+      if (intent === 'pro') {
+        toast.success('机构已开通，请完成专业版支付')
+        navigate({ to: '/plans', replace: true, search: { pay: undefined } })
+      } else {
+        toast.success('机构空间已开通，正在进入工作台')
+        navigate({ to: '/admin', replace: true })
+      }
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, '开通失败，请稍后重试'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -72,12 +90,38 @@ export function SignUpForm({
       >
         <FormField
           control={form.control}
-          name='email'
+          name='orgName'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>机构名称</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input placeholder='例如：启明教育' autoComplete='organization' {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='contactName'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>联系人</FormLabel>
+              <FormControl>
+                <Input placeholder='您的姓名' autoComplete='name' {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='username'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>登录用户名</FormLabel>
+              <FormControl>
+                <Input placeholder='用于登录工作台' autoComplete='username' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -88,9 +132,9 @@ export function SignUpForm({
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>密码</FormLabel>
               <FormControl>
-                <PasswordInput placeholder='********' {...field} />
+                <PasswordInput placeholder='至少 6 位' autoComplete='new-password' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -101,48 +145,18 @@ export function SignUpForm({
           name='confirmPassword'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Confirm Password</FormLabel>
+              <FormLabel>确认密码</FormLabel>
               <FormControl>
-                <PasswordInput placeholder='********' {...field} />
+                <PasswordInput placeholder='再次输入密码' autoComplete='new-password' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
-          {isLoading ? <Loader2 className='animate-spin' /> : <UserPlus />}
-          Create Account
+        <Button className='mt-2 h-11 bg-[#1f6b4a] text-[#f4efe4] hover:bg-[#18583c]' disabled={isLoading}>
+          {isLoading ? <Loader2 className='animate-spin' /> : <Building2 />}
+          {intent === 'pro' ? '开通并去支付' : '开通并进入工作台'}
         </Button>
-
-        <div className='relative my-2'>
-          <div className='absolute inset-0 flex items-center'>
-            <span className='w-full border-t' />
-          </div>
-          <div className='relative flex justify-center text-xs uppercase'>
-            <span className='bg-background px-2 text-muted-foreground'>
-              Or continue with
-            </span>
-          </div>
-        </div>
-
-        <div className='grid grid-cols-2 gap-2'>
-          <Button
-            variant='outline'
-            className='w-full'
-            type='button'
-            disabled={isLoading}
-          >
-            <IconGithub className='h-4 w-4' /> GitHub
-          </Button>
-          <Button
-            variant='outline'
-            className='w-full'
-            type='button'
-            disabled={isLoading}
-          >
-            <IconFacebook className='h-4 w-4' /> Facebook
-          </Button>
-        </div>
       </form>
     </Form>
   )

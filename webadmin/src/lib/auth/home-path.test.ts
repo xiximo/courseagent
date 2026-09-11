@@ -14,6 +14,27 @@ describe('resolvePostLoginTarget', () => {
     listMock.mockReset()
   })
 
+  it('sends members with a foreign chat redirect to their own published agent', async () => {
+    listMock.mockResolvedValue([
+      {
+        agentId: 'agt_live',
+        name: '膳食顾问',
+        description: '',
+        status: 'active',
+        agentType: 'autonomous',
+        isDefault: true,
+        updatedAt: '2026-01-02T00:00:00Z',
+      },
+    ])
+
+    await expect(
+      resolvePostLoginTarget('/admin/chat/agt_9ab8d9ab', ['end_user'])
+    ).resolves.toEqual({
+      to: '/admin/chat/$agentId',
+      params: { agentId: 'agt_live' },
+    })
+  })
+
   it('sends members to the first published chat', async () => {
     listMock.mockResolvedValue([
       {
@@ -94,10 +115,54 @@ describe('resolvePostLoginTarget', () => {
     })
   })
 
-  it('keeps admins on the agent list by default', async () => {
+  it('sends platform admins to the saas console', async () => {
     await expect(
       resolvePostLoginTarget(undefined, ['sys_admin'])
-    ).resolves.toEqual({ to: '/admin/course-agents' })
+    ).resolves.toEqual({ to: '/saasadmin' })
     expect(listMock).not.toHaveBeenCalled()
+  })
+
+  it('sends institution admins to /admin', async () => {
+    await expect(
+      resolvePostLoginTarget(undefined, ['org_admin'])
+    ).resolves.toEqual({ to: '/admin' })
+    expect(listMock).not.toHaveBeenCalled()
+  })
+
+  it('ignores a chat redirect that belongs to another tenant', async () => {
+    listMock.mockResolvedValue([
+      {
+        agentId: 'agt_bb',
+        name: 'BB 顾问',
+        description: '',
+        status: 'active',
+        agentType: 'autonomous',
+        updatedAt: '2026-01-02T00:00:00Z',
+      },
+    ])
+
+    await expect(
+      resolvePostLoginTarget('/admin/chat/agt_9ab8d9ab', ['org_admin'])
+    ).resolves.toEqual({ to: '/admin' })
+  })
+
+  it('keeps a chat redirect when the agent belongs to the current tenant', async () => {
+    listMock.mockResolvedValue([
+      {
+        agentId: 'agt_9ab8d9ab',
+        name: 'AA 顾问',
+        description: '',
+        status: 'active',
+        agentType: 'autonomous',
+        updatedAt: '2026-01-02T00:00:00Z',
+      },
+    ])
+
+    await expect(
+      resolvePostLoginTarget('/admin/chat/agt_9ab8d9ab', ['org_admin'])
+    ).resolves.toEqual({
+      to: '/admin/chat/$agentId',
+      params: { agentId: 'agt_9ab8d9ab' },
+    })
   })
 })

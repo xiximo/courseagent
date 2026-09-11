@@ -11,8 +11,11 @@ MAX_TRACE_EVENTS = 120
 TOOL_LABELS = {
     "get_user_profile": "读取用户画像",
     "update_user_profile": "更新用户画像",
+    "query_course_detail": "查询课程详情",
+    "recommend_courses": "推荐适合班型",
     "search_core_nutrition": "检索核心营养知识",
     "search_platform_guide": "检索平台服务资料",
+    "search_knowledge": "检索机构知识库",
 }
 
 NODE_TYPE_LABELS = {

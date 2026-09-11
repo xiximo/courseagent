@@ -164,6 +164,8 @@ class CourseAgentLeadService:
         agent_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        tenant_id: uuid.UUID | None = None,
+        platform: bool = True,
     ) -> list[CourseAgentLeadSummaryDto]:
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
@@ -179,6 +181,11 @@ class CourseAgentLeadService:
         )
         if agent_id:
             stmt = stmt.where(CourseAgentLeadRecord.agent_id == agent_id)
+        if not platform:
+            if tenant_id is not None:
+                stmt = stmt.where(CourseAgentRecord.tenant_id == tenant_id)
+            else:
+                stmt = stmt.where(CourseAgentRecord.tenant_id.is_(None))
         rows = self.db.execute(stmt).all()
         return [
             self._to_summary(lead, agent_name=name) for lead, name in rows

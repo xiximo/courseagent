@@ -31,6 +31,7 @@ export function ForgotPassword() {
             Don't have an account?{' '}
             <Link
               to='/sign-up'
+              search={{ intent: undefined }}
               className='underline underline-offset-4 hover:text-primary'
             >
               Sign up

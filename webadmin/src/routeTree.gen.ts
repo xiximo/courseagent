@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as authOtpRouteImport } from './routes/(auth)/otp'
@@ -20,10 +21,13 @@ import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
-import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
+import { Route as JoinSlugRouteImport } from './routes/join.$slug'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAuditIndexRouteImport } from './routes/_authenticated/audit/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedPlansIndexRouteImport } from './routes/_authenticated/plans/index'
+import { Route as AuthenticatedSaasadminIndexRouteImport } from './routes/_authenticated/saasadmin/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSettingsAccountRouteImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
@@ -36,10 +40,26 @@ import { Route as AuthenticatedAdminCourseAgentsModelRouteImport } from './route
 import { Route as AuthenticatedAdminCourseAgentsStateMachineRouteImport } from './routes/_authenticated/admin/course-agents/state-machine'
 import { Route as AuthenticatedAdminKnowledgeIndexRouteImport } from './routes/_authenticated/admin/knowledge/index'
 import { Route as AuthenticatedAdminKnowledgeKbIdRouteImport } from './routes/_authenticated/admin/knowledge/$kbId'
+import { Route as AuthenticatedAdminMembersIndexRouteImport } from './routes/_authenticated/admin/members/index'
 import { Route as AuthenticatedAdminModelsIndexRouteImport } from './routes/_authenticated/admin/models/index'
+import { Route as AuthenticatedAdminUsageIndexRouteImport } from './routes/_authenticated/admin/usage/index'
+import { Route as AuthenticatedSaasadminAgentsIndexRouteImport } from './routes/_authenticated/saasadmin/agents/index'
+import { Route as AuthenticatedSaasadminAgentsAgentIdRouteImport } from './routes/_authenticated/saasadmin/agents/$agentId'
+import { Route as AuthenticatedSaasadminAuditIndexRouteImport } from './routes/_authenticated/saasadmin/audit/index'
+import { Route as AuthenticatedSaasadminKnowledgeIndexRouteImport } from './routes/_authenticated/saasadmin/knowledge/index'
+import { Route as AuthenticatedSaasadminKnowledgeKbIdRouteImport } from './routes/_authenticated/saasadmin/knowledge/$kbId'
+import { Route as AuthenticatedSaasadminModelsIndexRouteImport } from './routes/_authenticated/saasadmin/models/index'
+import { Route as AuthenticatedSaasadminTenantsIndexRouteImport } from './routes/_authenticated/saasadmin/tenants/index'
+import { Route as AuthenticatedSaasadminUsageIndexRouteImport } from './routes/_authenticated/saasadmin/usage/index'
+import { Route as AuthenticatedSaasadminUsersIndexRouteImport } from './routes/_authenticated/saasadmin/users/index'
 import { Route as AuthenticatedAdminCourseAgentsLeadsIndexRouteImport } from './routes/_authenticated/admin/course-agents/leads/index'
 import { Route as AuthenticatedAdminCourseAgentsLeadsLeadIdRouteImport } from './routes/_authenticated/admin/course-agents/leads/$leadId'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -94,17 +114,22 @@ const errors503Route = errors503RouteImport.update({
   path: '/503',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedSettingsRouteRoute =
   AuthenticatedSettingsRouteRouteImport.update({
     id: '/settings',
     path: '/settings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const JoinSlugRoute = JoinSlugRouteImport.update({
+  id: '/join/$slug',
+  path: '/join/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAuditIndexRoute = AuthenticatedAuditIndexRouteImport.update({
   id: '/audit/',
   path: '/audit/',
@@ -114,6 +139,17 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPlansIndexRoute = AuthenticatedPlansIndexRouteImport.update({
+  id: '/plans/',
+  path: '/plans/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSaasadminIndexRoute =
+  AuthenticatedSaasadminIndexRouteImport.update({
+    id: '/saasadmin/',
+    path: '/saasadmin/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSettingsIndexRoute =
@@ -187,10 +223,76 @@ const AuthenticatedAdminKnowledgeKbIdRoute =
     path: '/admin/knowledge/$kbId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminMembersIndexRoute =
+  AuthenticatedAdminMembersIndexRouteImport.update({
+    id: '/admin/members/',
+    path: '/admin/members/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminModelsIndexRoute =
   AuthenticatedAdminModelsIndexRouteImport.update({
     id: '/admin/models/',
     path: '/admin/models/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminUsageIndexRoute =
+  AuthenticatedAdminUsageIndexRouteImport.update({
+    id: '/admin/usage/',
+    path: '/admin/usage/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminAgentsIndexRoute =
+  AuthenticatedSaasadminAgentsIndexRouteImport.update({
+    id: '/saasadmin/agents/',
+    path: '/saasadmin/agents/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminAgentsAgentIdRoute =
+  AuthenticatedSaasadminAgentsAgentIdRouteImport.update({
+    id: '/saasadmin/agents/$agentId',
+    path: '/saasadmin/agents/$agentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminAuditIndexRoute =
+  AuthenticatedSaasadminAuditIndexRouteImport.update({
+    id: '/saasadmin/audit/',
+    path: '/saasadmin/audit/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminKnowledgeIndexRoute =
+  AuthenticatedSaasadminKnowledgeIndexRouteImport.update({
+    id: '/saasadmin/knowledge/',
+    path: '/saasadmin/knowledge/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminKnowledgeKbIdRoute =
+  AuthenticatedSaasadminKnowledgeKbIdRouteImport.update({
+    id: '/saasadmin/knowledge/$kbId',
+    path: '/saasadmin/knowledge/$kbId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminModelsIndexRoute =
+  AuthenticatedSaasadminModelsIndexRouteImport.update({
+    id: '/saasadmin/models/',
+    path: '/saasadmin/models/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminTenantsIndexRoute =
+  AuthenticatedSaasadminTenantsIndexRouteImport.update({
+    id: '/saasadmin/tenants/',
+    path: '/saasadmin/tenants/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminUsageIndexRoute =
+  AuthenticatedSaasadminUsageIndexRouteImport.update({
+    id: '/saasadmin/usage/',
+    path: '/saasadmin/usage/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSaasadminUsersIndexRoute =
+  AuthenticatedSaasadminUsersIndexRouteImport.update({
+    id: '/saasadmin/users/',
+    path: '/saasadmin/users/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminCourseAgentsLeadsIndexRoute =
@@ -207,7 +309,7 @@ const AuthenticatedAdminCourseAgentsLeadsLeadIdRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute
+  '/': typeof IndexRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
@@ -219,10 +321,14 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/join/$slug': typeof JoinSlugRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
   '/audit/': typeof AuthenticatedAuditIndexRoute
+  '/plans/': typeof AuthenticatedPlansIndexRoute
+  '/saasadmin/': typeof AuthenticatedSaasadminIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
@@ -231,13 +337,25 @@ export interface FileRoutesByFullPath {
   '/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
   '/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
+  '/saasadmin/agents/$agentId': typeof AuthenticatedSaasadminAgentsAgentIdRoute
+  '/saasadmin/knowledge/$kbId': typeof AuthenticatedSaasadminKnowledgeKbIdRoute
   '/admin/course-agents/': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/admin/knowledge/': typeof AuthenticatedAdminKnowledgeIndexRoute
+  '/admin/members/': typeof AuthenticatedAdminMembersIndexRoute
   '/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
+  '/admin/usage/': typeof AuthenticatedAdminUsageIndexRoute
+  '/saasadmin/agents/': typeof AuthenticatedSaasadminAgentsIndexRoute
+  '/saasadmin/audit/': typeof AuthenticatedSaasadminAuditIndexRoute
+  '/saasadmin/knowledge/': typeof AuthenticatedSaasadminKnowledgeIndexRoute
+  '/saasadmin/models/': typeof AuthenticatedSaasadminModelsIndexRoute
+  '/saasadmin/tenants/': typeof AuthenticatedSaasadminTenantsIndexRoute
+  '/saasadmin/usage/': typeof AuthenticatedSaasadminUsageIndexRoute
+  '/saasadmin/users/': typeof AuthenticatedSaasadminUsersIndexRoute
   '/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/admin/course-agents/leads/': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
   '/sign-in': typeof authSignInRoute
@@ -248,11 +366,14 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
-  '/': typeof AuthenticatedIndexRoute
+  '/join/$slug': typeof JoinSlugRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
   '/audit': typeof AuthenticatedAuditIndexRoute
+  '/plans': typeof AuthenticatedPlansIndexRoute
+  '/saasadmin': typeof AuthenticatedSaasadminIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
@@ -261,14 +382,26 @@ export interface FileRoutesByTo {
   '/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
   '/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
+  '/saasadmin/agents/$agentId': typeof AuthenticatedSaasadminAgentsAgentIdRoute
+  '/saasadmin/knowledge/$kbId': typeof AuthenticatedSaasadminKnowledgeKbIdRoute
   '/admin/course-agents': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/admin/knowledge': typeof AuthenticatedAdminKnowledgeIndexRoute
+  '/admin/members': typeof AuthenticatedAdminMembersIndexRoute
   '/admin/models': typeof AuthenticatedAdminModelsIndexRoute
+  '/admin/usage': typeof AuthenticatedAdminUsageIndexRoute
+  '/saasadmin/agents': typeof AuthenticatedSaasadminAgentsIndexRoute
+  '/saasadmin/audit': typeof AuthenticatedSaasadminAuditIndexRoute
+  '/saasadmin/knowledge': typeof AuthenticatedSaasadminKnowledgeIndexRoute
+  '/saasadmin/models': typeof AuthenticatedSaasadminModelsIndexRoute
+  '/saasadmin/tenants': typeof AuthenticatedSaasadminTenantsIndexRoute
+  '/saasadmin/usage': typeof AuthenticatedSaasadminUsageIndexRoute
+  '/saasadmin/users': typeof AuthenticatedSaasadminUsersIndexRoute
   '/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/admin/course-agents/leads': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
@@ -281,11 +414,14 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
-  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/join/$slug': typeof JoinSlugRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/audit/': typeof AuthenticatedAuditIndexRoute
+  '/_authenticated/plans/': typeof AuthenticatedPlansIndexRoute
+  '/_authenticated/saasadmin/': typeof AuthenticatedSaasadminIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/admin/chat/$agentId': typeof AuthenticatedAdminChatAgentIdRoute
@@ -294,9 +430,20 @@ export interface FileRoutesById {
   '/_authenticated/admin/course-agents/model': typeof AuthenticatedAdminCourseAgentsModelRoute
   '/_authenticated/admin/course-agents/state-machine': typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   '/_authenticated/admin/knowledge/$kbId': typeof AuthenticatedAdminKnowledgeKbIdRoute
+  '/_authenticated/saasadmin/agents/$agentId': typeof AuthenticatedSaasadminAgentsAgentIdRoute
+  '/_authenticated/saasadmin/knowledge/$kbId': typeof AuthenticatedSaasadminKnowledgeKbIdRoute
   '/_authenticated/admin/course-agents/': typeof AuthenticatedAdminCourseAgentsIndexRoute
   '/_authenticated/admin/knowledge/': typeof AuthenticatedAdminKnowledgeIndexRoute
+  '/_authenticated/admin/members/': typeof AuthenticatedAdminMembersIndexRoute
   '/_authenticated/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
+  '/_authenticated/admin/usage/': typeof AuthenticatedAdminUsageIndexRoute
+  '/_authenticated/saasadmin/agents/': typeof AuthenticatedSaasadminAgentsIndexRoute
+  '/_authenticated/saasadmin/audit/': typeof AuthenticatedSaasadminAuditIndexRoute
+  '/_authenticated/saasadmin/knowledge/': typeof AuthenticatedSaasadminKnowledgeIndexRoute
+  '/_authenticated/saasadmin/models/': typeof AuthenticatedSaasadminModelsIndexRoute
+  '/_authenticated/saasadmin/tenants/': typeof AuthenticatedSaasadminTenantsIndexRoute
+  '/_authenticated/saasadmin/usage/': typeof AuthenticatedSaasadminUsageIndexRoute
+  '/_authenticated/saasadmin/users/': typeof AuthenticatedSaasadminUsersIndexRoute
   '/_authenticated/admin/course-agents/leads/$leadId': typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   '/_authenticated/admin/course-agents/leads/': typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
@@ -315,10 +462,14 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/join/$slug'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
+    | '/admin/'
     | '/audit/'
+    | '/plans/'
+    | '/saasadmin/'
     | '/settings/'
     | '/users/'
     | '/admin/chat/$agentId'
@@ -327,13 +478,25 @@ export interface FileRouteTypes {
     | '/admin/course-agents/model'
     | '/admin/course-agents/state-machine'
     | '/admin/knowledge/$kbId'
+    | '/saasadmin/agents/$agentId'
+    | '/saasadmin/knowledge/$kbId'
     | '/admin/course-agents/'
     | '/admin/knowledge/'
+    | '/admin/members/'
     | '/admin/models/'
+    | '/admin/usage/'
+    | '/saasadmin/agents/'
+    | '/saasadmin/audit/'
+    | '/saasadmin/knowledge/'
+    | '/saasadmin/models/'
+    | '/saasadmin/tenants/'
+    | '/saasadmin/usage/'
+    | '/saasadmin/users/'
     | '/admin/course-agents/leads/$leadId'
     | '/admin/course-agents/leads/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/forgot-password'
     | '/otp'
     | '/sign-in'
@@ -344,11 +507,14 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
-    | '/'
+    | '/join/$slug'
     | '/errors/$error'
     | '/settings/account'
     | '/settings/appearance'
+    | '/admin'
     | '/audit'
+    | '/plans'
+    | '/saasadmin'
     | '/settings'
     | '/users'
     | '/admin/chat/$agentId'
@@ -357,13 +523,25 @@ export interface FileRouteTypes {
     | '/admin/course-agents/model'
     | '/admin/course-agents/state-machine'
     | '/admin/knowledge/$kbId'
+    | '/saasadmin/agents/$agentId'
+    | '/saasadmin/knowledge/$kbId'
     | '/admin/course-agents'
     | '/admin/knowledge'
+    | '/admin/members'
     | '/admin/models'
+    | '/admin/usage'
+    | '/saasadmin/agents'
+    | '/saasadmin/audit'
+    | '/saasadmin/knowledge'
+    | '/saasadmin/models'
+    | '/saasadmin/tenants'
+    | '/saasadmin/usage'
+    | '/saasadmin/users'
     | '/admin/course-agents/leads/$leadId'
     | '/admin/course-agents/leads'
   id:
     | '__root__'
+    | '/'
     | '/_authenticated'
     | '/_authenticated/settings'
     | '/(auth)/forgot-password'
@@ -376,11 +554,14 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
-    | '/_authenticated/'
+    | '/join/$slug'
     | '/_authenticated/errors/$error'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/admin/'
     | '/_authenticated/audit/'
+    | '/_authenticated/plans/'
+    | '/_authenticated/saasadmin/'
     | '/_authenticated/settings/'
     | '/_authenticated/users/'
     | '/_authenticated/admin/chat/$agentId'
@@ -389,14 +570,26 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/course-agents/model'
     | '/_authenticated/admin/course-agents/state-machine'
     | '/_authenticated/admin/knowledge/$kbId'
+    | '/_authenticated/saasadmin/agents/$agentId'
+    | '/_authenticated/saasadmin/knowledge/$kbId'
     | '/_authenticated/admin/course-agents/'
     | '/_authenticated/admin/knowledge/'
+    | '/_authenticated/admin/members/'
     | '/_authenticated/admin/models/'
+    | '/_authenticated/admin/usage/'
+    | '/_authenticated/saasadmin/agents/'
+    | '/_authenticated/saasadmin/audit/'
+    | '/_authenticated/saasadmin/knowledge/'
+    | '/_authenticated/saasadmin/models/'
+    | '/_authenticated/saasadmin/tenants/'
+    | '/_authenticated/saasadmin/usage/'
+    | '/_authenticated/saasadmin/users/'
     | '/_authenticated/admin/course-agents/leads/$leadId'
     | '/_authenticated/admin/course-agents/leads/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
@@ -408,10 +601,18 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  JoinSlugRoute: typeof JoinSlugRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -489,18 +690,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof errors503RouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/': {
-      id: '/_authenticated/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AuthenticatedIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/join/$slug': {
+      id: '/join/$slug'
+      path: '/join/$slug'
+      fullPath: '/join/$slug'
+      preLoaderRoute: typeof JoinSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/audit/': {
@@ -515,6 +723,20 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/plans/': {
+      id: '/_authenticated/plans/'
+      path: '/plans'
+      fullPath: '/plans/'
+      preLoaderRoute: typeof AuthenticatedPlansIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/': {
+      id: '/_authenticated/saasadmin/'
+      path: '/saasadmin'
+      fullPath: '/saasadmin/'
+      preLoaderRoute: typeof AuthenticatedSaasadminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings/': {
@@ -601,11 +823,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminKnowledgeKbIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/members/': {
+      id: '/_authenticated/admin/members/'
+      path: '/admin/members'
+      fullPath: '/admin/members/'
+      preLoaderRoute: typeof AuthenticatedAdminMembersIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/models/': {
       id: '/_authenticated/admin/models/'
       path: '/admin/models'
       fullPath: '/admin/models/'
       preLoaderRoute: typeof AuthenticatedAdminModelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/usage/': {
+      id: '/_authenticated/admin/usage/'
+      path: '/admin/usage'
+      fullPath: '/admin/usage/'
+      preLoaderRoute: typeof AuthenticatedAdminUsageIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/agents/': {
+      id: '/_authenticated/saasadmin/agents/'
+      path: '/saasadmin/agents'
+      fullPath: '/saasadmin/agents/'
+      preLoaderRoute: typeof AuthenticatedSaasadminAgentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/agents/$agentId': {
+      id: '/_authenticated/saasadmin/agents/$agentId'
+      path: '/saasadmin/agents/$agentId'
+      fullPath: '/saasadmin/agents/$agentId'
+      preLoaderRoute: typeof AuthenticatedSaasadminAgentsAgentIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/audit/': {
+      id: '/_authenticated/saasadmin/audit/'
+      path: '/saasadmin/audit'
+      fullPath: '/saasadmin/audit/'
+      preLoaderRoute: typeof AuthenticatedSaasadminAuditIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/knowledge/': {
+      id: '/_authenticated/saasadmin/knowledge/'
+      path: '/saasadmin/knowledge'
+      fullPath: '/saasadmin/knowledge/'
+      preLoaderRoute: typeof AuthenticatedSaasadminKnowledgeIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/knowledge/$kbId': {
+      id: '/_authenticated/saasadmin/knowledge/$kbId'
+      path: '/saasadmin/knowledge/$kbId'
+      fullPath: '/saasadmin/knowledge/$kbId'
+      preLoaderRoute: typeof AuthenticatedSaasadminKnowledgeKbIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/models/': {
+      id: '/_authenticated/saasadmin/models/'
+      path: '/saasadmin/models'
+      fullPath: '/saasadmin/models/'
+      preLoaderRoute: typeof AuthenticatedSaasadminModelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/tenants/': {
+      id: '/_authenticated/saasadmin/tenants/'
+      path: '/saasadmin/tenants'
+      fullPath: '/saasadmin/tenants/'
+      preLoaderRoute: typeof AuthenticatedSaasadminTenantsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/usage/': {
+      id: '/_authenticated/saasadmin/usage/'
+      path: '/saasadmin/usage'
+      fullPath: '/saasadmin/usage/'
+      preLoaderRoute: typeof AuthenticatedSaasadminUsageIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/saasadmin/users/': {
+      id: '/_authenticated/saasadmin/users/'
+      path: '/saasadmin/users'
+      fullPath: '/saasadmin/users/'
+      preLoaderRoute: typeof AuthenticatedSaasadminUsersIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/course-agents/leads/': {
@@ -645,9 +944,11 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedAuditIndexRoute: typeof AuthenticatedAuditIndexRoute
+  AuthenticatedPlansIndexRoute: typeof AuthenticatedPlansIndexRoute
+  AuthenticatedSaasadminIndexRoute: typeof AuthenticatedSaasadminIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedAdminChatAgentIdRoute: typeof AuthenticatedAdminChatAgentIdRoute
   AuthenticatedAdminCourseAgentsAgentIdRoute: typeof AuthenticatedAdminCourseAgentsAgentIdRoute
@@ -655,18 +956,31 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminCourseAgentsModelRoute: typeof AuthenticatedAdminCourseAgentsModelRoute
   AuthenticatedAdminCourseAgentsStateMachineRoute: typeof AuthenticatedAdminCourseAgentsStateMachineRoute
   AuthenticatedAdminKnowledgeKbIdRoute: typeof AuthenticatedAdminKnowledgeKbIdRoute
+  AuthenticatedSaasadminAgentsAgentIdRoute: typeof AuthenticatedSaasadminAgentsAgentIdRoute
+  AuthenticatedSaasadminKnowledgeKbIdRoute: typeof AuthenticatedSaasadminKnowledgeKbIdRoute
   AuthenticatedAdminCourseAgentsIndexRoute: typeof AuthenticatedAdminCourseAgentsIndexRoute
   AuthenticatedAdminKnowledgeIndexRoute: typeof AuthenticatedAdminKnowledgeIndexRoute
+  AuthenticatedAdminMembersIndexRoute: typeof AuthenticatedAdminMembersIndexRoute
   AuthenticatedAdminModelsIndexRoute: typeof AuthenticatedAdminModelsIndexRoute
+  AuthenticatedAdminUsageIndexRoute: typeof AuthenticatedAdminUsageIndexRoute
+  AuthenticatedSaasadminAgentsIndexRoute: typeof AuthenticatedSaasadminAgentsIndexRoute
+  AuthenticatedSaasadminAuditIndexRoute: typeof AuthenticatedSaasadminAuditIndexRoute
+  AuthenticatedSaasadminKnowledgeIndexRoute: typeof AuthenticatedSaasadminKnowledgeIndexRoute
+  AuthenticatedSaasadminModelsIndexRoute: typeof AuthenticatedSaasadminModelsIndexRoute
+  AuthenticatedSaasadminTenantsIndexRoute: typeof AuthenticatedSaasadminTenantsIndexRoute
+  AuthenticatedSaasadminUsageIndexRoute: typeof AuthenticatedSaasadminUsageIndexRoute
+  AuthenticatedSaasadminUsersIndexRoute: typeof AuthenticatedSaasadminUsersIndexRoute
   AuthenticatedAdminCourseAgentsLeadsLeadIdRoute: typeof AuthenticatedAdminCourseAgentsLeadsLeadIdRoute
   AuthenticatedAdminCourseAgentsLeadsIndexRoute: typeof AuthenticatedAdminCourseAgentsLeadsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
-  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedAuditIndexRoute: AuthenticatedAuditIndexRoute,
+  AuthenticatedPlansIndexRoute: AuthenticatedPlansIndexRoute,
+  AuthenticatedSaasadminIndexRoute: AuthenticatedSaasadminIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedAdminChatAgentIdRoute: AuthenticatedAdminChatAgentIdRoute,
   AuthenticatedAdminCourseAgentsAgentIdRoute:
@@ -678,10 +992,27 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminCourseAgentsStateMachineRoute:
     AuthenticatedAdminCourseAgentsStateMachineRoute,
   AuthenticatedAdminKnowledgeKbIdRoute: AuthenticatedAdminKnowledgeKbIdRoute,
+  AuthenticatedSaasadminAgentsAgentIdRoute:
+    AuthenticatedSaasadminAgentsAgentIdRoute,
+  AuthenticatedSaasadminKnowledgeKbIdRoute:
+    AuthenticatedSaasadminKnowledgeKbIdRoute,
   AuthenticatedAdminCourseAgentsIndexRoute:
     AuthenticatedAdminCourseAgentsIndexRoute,
   AuthenticatedAdminKnowledgeIndexRoute: AuthenticatedAdminKnowledgeIndexRoute,
+  AuthenticatedAdminMembersIndexRoute: AuthenticatedAdminMembersIndexRoute,
   AuthenticatedAdminModelsIndexRoute: AuthenticatedAdminModelsIndexRoute,
+  AuthenticatedAdminUsageIndexRoute: AuthenticatedAdminUsageIndexRoute,
+  AuthenticatedSaasadminAgentsIndexRoute:
+    AuthenticatedSaasadminAgentsIndexRoute,
+  AuthenticatedSaasadminAuditIndexRoute: AuthenticatedSaasadminAuditIndexRoute,
+  AuthenticatedSaasadminKnowledgeIndexRoute:
+    AuthenticatedSaasadminKnowledgeIndexRoute,
+  AuthenticatedSaasadminModelsIndexRoute:
+    AuthenticatedSaasadminModelsIndexRoute,
+  AuthenticatedSaasadminTenantsIndexRoute:
+    AuthenticatedSaasadminTenantsIndexRoute,
+  AuthenticatedSaasadminUsageIndexRoute: AuthenticatedSaasadminUsageIndexRoute,
+  AuthenticatedSaasadminUsersIndexRoute: AuthenticatedSaasadminUsersIndexRoute,
   AuthenticatedAdminCourseAgentsLeadsLeadIdRoute:
     AuthenticatedAdminCourseAgentsLeadsLeadIdRoute,
   AuthenticatedAdminCourseAgentsLeadsIndexRoute:
@@ -692,6 +1023,7 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
@@ -703,6 +1035,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  JoinSlugRoute: JoinSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

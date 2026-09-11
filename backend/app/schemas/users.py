@@ -27,6 +27,8 @@ class UserAccountDto(BaseModel):
     lastLoginAt: str | None = None
     createdAt: str | None = None
     isSeed: bool = False
+    tenantId: str | None = None
+    tenantName: str | None = None
 
 
 class CreateUserBody(BaseModel):

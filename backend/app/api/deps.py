@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiBusinessError
 from app.config import Settings, get_settings
+from app.db.models.tenant import TenantRecord
 from app.db.models.user import AccountStatus
 from app.db.session import get_db
 from app.schemas.auth import AuthUserProfile
@@ -51,7 +52,15 @@ def get_current_user(
     if not user or user.status != AccountStatus.enabled:
         raise ApiBusinessError("UNAUTHORIZED", "用户不存在或已失效", 401)
 
-    return to_auth_profile(user)
+    profile = to_auth_profile(user)
+    if user.tenant_id:
+        tenant = db.get(TenantRecord, user.tenant_id)
+        if tenant:
+            profile.tenantId = str(tenant.id)
+            profile.tenantName = tenant.name
+            profile.tenantSlug = tenant.slug
+            profile.planCode = tenant.plan_code or "free"
+    return profile
 
 
 def get_optional_current_user(

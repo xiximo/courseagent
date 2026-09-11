@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, KeyRound, Plus, Power, Trash2 } from 'lucide-react'
+import { KeyRound, Plus, Power, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
 import {
@@ -15,15 +15,15 @@ import { Main } from '@/components/layout/main'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import type { UserAccount } from '../data/types'
-import { TEST_USER_PASSWORD } from '../data/types'
 import { CreateUserDialog } from '../components/create-user-dialog'
 
 function statusLabel(status: UserAccount['status']) {
@@ -39,12 +39,52 @@ function statusLabel(status: UserAccount['status']) {
   }
 }
 
-function personaLabel(user: UserAccount) {
-  if (user.profile.personaLabel) return user.profile.personaLabel
-  if (user.roleCodes.some((code) => code.toLowerCase().includes('admin'))) {
-    return '管理员'
+function roleLabel(codes: string[]) {
+  const set = new Set(codes.map((code) => code.toLowerCase()))
+  if (
+    set.has('sys_admin') ||
+    set.has('system_admin') ||
+    set.has('admin')
+  ) {
+    return '平台管理员'
   }
-  return '未设置画像'
+  if (set.has('org_admin')) return '机构管理员'
+  return '成员'
+}
+
+function isOrgAdmin(codes: string[]) {
+  return codes.some((code) => code.toLowerCase() === 'org_admin')
+}
+
+function TenantCell({ user }: { user: UserAccount }) {
+  const name = user.tenantName?.trim()
+  if (name) {
+    return <div className='font-medium'>{name}</div>
+  }
+  if (user.tenantId) {
+    return <div className='font-medium'>未知机构</div>
+  }
+  if (isOrgAdmin(user.roleCodes)) {
+    return (
+      <>
+        <div className='font-medium'>机构账号</div>
+        <div className='text-muted-foreground text-xs'>未关联租户</div>
+      </>
+    )
+  }
+  return (
+    <>
+      <div className='font-medium'>平台</div>
+      <div className='text-muted-foreground text-xs'>不属于机构</div>
+    </>
+  )
+}
+
+function formatTime(value: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-CN', { hour12: false })
 }
 
 export function UsersListPage() {
@@ -72,19 +112,10 @@ export function UsersListPage() {
     void loadUsers()
   }, [])
 
-  const personaCount = useMemo(
-    () => users.filter((user) => user.isSeed || user.profile.persona).length,
+  const tenantCount = useMemo(
+    () => new Set(users.map((user) => user.tenantId).filter(Boolean)).size,
     [users]
   )
-
-  const copyText = async (text: string, ok: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success(ok)
-    } catch {
-      toast.error('复制失败')
-    }
-  }
 
   const handleToggleStatus = async (user: UserAccount) => {
     setBusyId(user.id)
@@ -135,11 +166,8 @@ export function UsersListPage() {
           <div>
             <h2 className='text-2xl font-bold tracking-tight'>用户管理</h2>
             <p className='text-muted-foreground'>
-              管理登录账号与赛题测试画像。预置用户密码均为{' '}
-              <code className='rounded bg-muted px-1 py-0.5 text-xs'>
-                {TEST_USER_PASSWORD}
-              </code>
-              ，可直接登录对话。
+              平台账号与各机构成员。共 {users.length} 人
+              {tenantCount > 0 ? `，覆盖 ${tenantCount} 个机构` : ''}。
             </p>
           </div>
           <Button
@@ -154,170 +182,91 @@ export function UsersListPage() {
 
         {error ? <AppErrorAlert message={error} /> : null}
 
-        <div className='grid gap-4 sm:grid-cols-3'>
-          <Card>
-            <CardHeader className='pb-2'>
-              <CardTitle className='text-sm font-medium'>账号总数</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold'>{users.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className='pb-2'>
-              <CardTitle className='text-sm font-medium'>画像用户</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold'>{personaCount}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className='pb-2'>
-              <CardTitle className='text-sm font-medium'>测试口令</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold'>{TEST_USER_PASSWORD}</div>
-            </CardContent>
-          </Card>
-        </div>
-
         {loading ? (
-          <p className='text-sm text-muted-foreground'>加载中…</p>
+          <p className='text-muted-foreground text-sm'>加载中…</p>
         ) : users.length === 0 ? (
-          <p className='text-sm text-muted-foreground'>暂无用户</p>
+          <p className='text-muted-foreground text-sm'>暂无用户</p>
         ) : (
-          <div className='grid gap-4 lg:grid-cols-2'>
-            {users.map((user) => (
-              <Card key={user.id}>
-                <CardHeader className='space-y-3'>
-                  <div className='flex flex-wrap items-start justify-between gap-2'>
-                    <div>
-                      <CardTitle className='text-lg'>{user.fullName}</CardTitle>
-                      <CardDescription className='mt-1 font-mono'>
-                        {user.username}
-                      </CardDescription>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>用户</TableHead>
+                <TableHead>所属机构</TableHead>
+                <TableHead>角色</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>最近登录</TableHead>
+                <TableHead className='text-right'>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>
+                    <div className='font-medium'>{user.fullName}</div>
+                    <div className='text-muted-foreground font-mono text-xs'>
+                      {user.username}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <TenantCell user={user} />
+                  </TableCell>
+                  <TableCell>
                     <div className='flex flex-wrap gap-1'>
-                      <Badge variant='secondary'>{personaLabel(user)}</Badge>
-                      <Badge
-                        variant={
-                          user.status === 'enabled' ? 'default' : 'outline'
-                        }
+                      <Badge variant='secondary'>{roleLabel(user.roleCodes)}</Badge>
+                      {user.isSeed ? (
+                        <Badge variant='outline'>预置</Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={user.status === 'enabled' ? 'default' : 'outline'}
+                    >
+                      {statusLabel(user.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className='text-muted-foreground text-sm'>
+                    {formatTime(user.lastLoginAt)}
+                  </TableCell>
+                  <TableCell className='text-right'>
+                    <div className='flex justify-end gap-2'>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        disabled={!isAdmin || busyId === user.id}
+                        onClick={() => void handleResetPassword(user)}
                       >
-                        {statusLabel(user.status)}
-                      </Badge>
-                      {user.isSeed ? <Badge variant='outline'>预置</Badge> : null}
+                        <KeyRound className='mr-1 size-3.5' />
+                        重置密码
+                      </Button>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        disabled={!isAdmin || busyId === user.id}
+                        onClick={() => void handleToggleStatus(user)}
+                      >
+                        <Power className='mr-1 size-3.5' />
+                        {user.status === 'enabled' ? '停用' : '启用'}
+                      </Button>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        className='text-destructive hover:text-destructive'
+                        disabled={!isAdmin || busyId === user.id}
+                        onClick={() => setDeleteTarget(user)}
+                      >
+                        <Trash2 className='mr-1 size-3.5' />
+                        删除
+                      </Button>
                     </div>
-                  </div>
-                  {user.profile.summary ? (
-                    <p className='text-sm text-muted-foreground'>
-                      {user.profile.summary}
-                    </p>
-                  ) : null}
-                </CardHeader>
-                <CardContent className='space-y-4'>
-                  {user.profile.goals.length > 0 ? (
-                    <div className='text-sm'>
-                      <div className='mb-1 font-medium'>目标</div>
-                      <p className='text-muted-foreground'>
-                        {user.profile.goals.join(' · ')}
-                      </p>
-                    </div>
-                  ) : null}
-                  {user.profile.constraints.length > 0 ? (
-                    <div className='text-sm'>
-                      <div className='mb-1 font-medium'>约束</div>
-                      <p className='text-muted-foreground'>
-                        {user.profile.constraints.join(' · ')}
-                      </p>
-                    </div>
-                  ) : null}
-                  {(user.profile.conditions ?? []).length > 0 ? (
-                    <div className='text-sm'>
-                      <div className='mb-1 font-medium'>健康状况</div>
-                      <p className='text-muted-foreground'>
-                        {user.profile.conditions?.join(' · ')}
-                      </p>
-                    </div>
-                  ) : null}
-                  {(user.profile.allergies ?? []).length > 0 ? (
-                    <div className='text-sm'>
-                      <div className='mb-1 font-medium'>过敏</div>
-                      <p className='text-muted-foreground'>
-                        {user.profile.allergies?.join(' · ')}
-                      </p>
-                    </div>
-                  ) : null}
-                  {user.profile.sampleQuestions.length > 0 ? (
-                    <div className='space-y-2'>
-                      <div className='text-sm font-medium'>推荐提问</div>
-                      <div className='flex flex-col gap-2'>
-                        {user.profile.sampleQuestions.map((question) => (
-                          <button
-                            key={question}
-                            type='button'
-                            className='flex items-start justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50'
-                            onClick={() =>
-                              copyText(question, '已复制提问，可粘贴到对话')
-                            }
-                          >
-                            <span>{question}</span>
-                            <Copy className='mt-0.5 size-3.5 shrink-0 text-muted-foreground' />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className='flex flex-wrap gap-2'>
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!isAdmin || busyId === user.id}
-                      onClick={() =>
-                        copyText(
-                          `${user.username} / ${TEST_USER_PASSWORD}`,
-                          '已复制账号口令'
-                        )
-                      }
-                    >
-                      复制账号
-                    </Button>
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!isAdmin || busyId === user.id}
-                      onClick={() => handleResetPassword(user)}
-                    >
-                      <KeyRound className='mr-1 size-3.5' />
-                      重置密码
-                    </Button>
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!isAdmin || busyId === user.id}
-                      onClick={() => handleToggleStatus(user)}
-                    >
-                      <Power className='mr-1 size-3.5' />
-                      {user.status === 'enabled' ? '停用' : '启用'}
-                    </Button>
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!isAdmin || busyId === user.id}
-                      onClick={() => setDeleteTarget(user)}
-                    >
-                      <Trash2 className='mr-1 size-3.5' />
-                      删除
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </Main>
 

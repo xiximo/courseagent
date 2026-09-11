@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import type { AppPermission } from '@/lib/auth/permissions'
+import { useAuthStore } from '@/stores/auth-store'
 import { useCourseAgentsQuery } from '@/features/course-agent/hooks/use-course-agents-query'
 import { isAgentVisibleInChat } from '@/features/course-agent/lib/agent-schedule'
 import { sidebarData } from './data/sidebar-data'
@@ -34,9 +35,10 @@ function filterNavItems(
 }
 
 export function useFilteredSidebarData() {
-  const { can } = useAppPermissions()
-  const canViewAgents = can('course_agent_view')
-  const { data: agents = [] } = useCourseAgentsQuery(canViewAgents)
+  const { can, isPlatformAdmin } = useAppPermissions()
+  const user = useAuthStore((s) => s.auth.user)
+  const showOrgChat = can('course_agent_view') && Boolean(user?.tenantId)
+  const { data: agents = [] } = useCourseAgentsQuery(showOrgChat)
 
   return useMemo(() => {
     const navGroups: NavGroup[] = sidebarData.navGroups
@@ -47,8 +49,15 @@ export function useFilteredSidebarData() {
       })
       .filter(Boolean) as NavGroup[]
 
-    const published = agents.filter((agent) => isAgentVisibleInChat(agent))
-    if (canViewAgents && published.length > 0) {
+    const tenantId = user?.tenantId ?? null
+    const published = agents.filter((agent) => {
+      if (tenantId && agent.tenantId && agent.tenantId !== tenantId) return false
+      if (!isAgentVisibleInChat(agent)) return false
+      if (isPlatformAdmin) return false
+      if (user?.planCode === 'pro') return true
+      return (agent.agentType ?? 'workflow') === 'basic'
+    })
+    if (showOrgChat && !isPlatformAdmin && published.length > 0) {
       navGroups.unshift({
         title: 'nav.group.agentChat',
         items: published.map((agent) => ({
@@ -61,6 +70,30 @@ export function useFilteredSidebarData() {
       })
     }
 
-    return { ...sidebarData, navGroups }
-  }, [agents, can, canViewAgents])
+    const tenantName = user?.tenantName?.trim()
+    const brandName = tenantName
+      ? tenantName
+      : isPlatformAdmin
+        ? '启明顾问'
+        : '本机构'
+    const plan = tenantName
+      ? user?.planCode === 'pro'
+        ? '专业版'
+        : '免费版'
+      : isPlatformAdmin
+        ? '平台'
+        : ''
+
+    return {
+      ...sidebarData,
+      navGroups,
+      teams: [
+        {
+          ...sidebarData.teams[0],
+          name: brandName,
+          plan,
+        },
+      ],
+    }
+  }, [agents, can, isPlatformAdmin, showOrgChat, user])
 }

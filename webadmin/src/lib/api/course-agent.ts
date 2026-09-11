@@ -310,6 +310,9 @@ export async function reindexCourseMaterial(
 export async function createKnowledgeBase(body: {
   name: string
   description?: string
+  chunkMode?: string
+  chunkMaxChars?: number
+  chunkOverlapChars?: number
 }): Promise<CourseAgentKnowledgeBase> {
   if (isDevMock()) return mockCreateKnowledgeBase(body)
   const res = await apiFetch('POST', '/api/v1/platform/knowledge-bases', body)
@@ -326,7 +329,13 @@ export async function getKnowledgeBase(
 
 export async function updateKnowledgeBase(
   kbId: string,
-  body: { name: string; description?: string }
+  body: {
+    name: string
+    description?: string
+    chunkMode?: string
+    chunkMaxChars?: number
+    chunkOverlapChars?: number
+  }
 ): Promise<CourseAgentKnowledgeBase> {
   if (isDevMock()) return mockUpdateKnowledgeBase(kbId, body)
   const res = await apiFetch(
@@ -468,9 +477,13 @@ export async function listCourseAgentLeads(params?: {
 
 export async function listAdminSessionRecords(params?: {
   agentId?: string
+  from?: string
+  to?: string
 }): Promise<AdminUserSessionGroup[]> {
   const query = new URLSearchParams()
   if (params?.agentId) query.set('agent_id', params.agentId)
+  if (params?.from) query.set('from', params.from)
+  if (params?.to) query.set('to', params.to)
   const qs = query.toString()
   const res = await apiFetch(
     'GET',

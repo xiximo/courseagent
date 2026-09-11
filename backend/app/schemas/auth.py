@@ -13,6 +13,10 @@ class AuthUserProfile(BaseModel):
     deptId: str | None = None
     status: AccountStatus = "enabled"
     roleCodes: list[str] = Field(default_factory=list)
+    planCode: str = "free"
+    tenantId: str | None = None
+    tenantName: str | None = None
+    tenantSlug: str | None = None
     lastLoginAt: str | None = None
 
 

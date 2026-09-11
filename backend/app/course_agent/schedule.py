@@ -6,7 +6,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.course_agent import CourseAgentRecord
@@ -56,6 +55,15 @@ def normalize_schedule(raw: dict[str, Any] | None) -> dict[str, Any]:
 def is_visible_in_chat(cfg: dict[str, Any] | None) -> bool:
     schedule = normalize_schedule((cfg or {}).get("schedule"))
     return bool(schedule["visibleInChat"])
+
+
+def force_chat_only_schedule(raw: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Harness 不再提供定时任务配置，统一为对话可见、不自动执行。"""
+    data = normalize_schedule(raw)
+    data["enabled"] = False
+    data["runMode"] = "chat"
+    data["visibleInChat"] = True
+    return data
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -111,24 +119,5 @@ def run_scheduled_agent(
 
 
 def run_due_harness_jobs(db: Session, *, now: datetime | None = None) -> int:
-    now = now or datetime.now(UTC)
-    ran = 0
-    rows = list(db.scalars(select(CourseAgentRecord)))
-    for agent in rows:
-        cfg = agent.config_json or {}
-        if str(cfg.get("agentType") or "") != "autonomous":
-            continue
-        if agent.status != "active":
-            continue
-        schedule = normalize_schedule(cfg.get("schedule"))
-        if not schedule["enabled"]:
-            continue
-        if not _due(schedule, now):
-            continue
-        try:
-            run_scheduled_agent(db, agent, now=now)
-            ran += 1
-        except Exception:
-            db.rollback()
-            logger.exception("Scheduled harness %s failed", agent.agent_id)
-    return ran
+    del db, now
+    return 0

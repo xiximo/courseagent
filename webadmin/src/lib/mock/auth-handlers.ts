@@ -5,6 +5,8 @@ import type {
   ChangePasswordResult,
   LoginBody,
   LoginResponse,
+  RegisterMemberBody,
+  RegisterOrgBody,
 } from '@/lib/api/auth'
 import { withMockDelay } from '@/lib/is-dev-mock'
 
@@ -20,6 +22,7 @@ function buildMockUser(username: string): AuthUserProfile {
     deptId: null,
     status: 'enabled',
     roleCodes: ['sys_admin', 'SYSTEM_ADMIN'],
+    planCode: 'pro',
     lastLoginAt: new Date().toISOString(),
   }
 }
@@ -50,6 +53,91 @@ export async function mockLogin(body: LoginBody): Promise<LoginResponse> {
   }
 
   const user = buildMockUser(username)
+  return withMockDelay(
+    {
+      accessToken: 'mock-access-token',
+      tokenType: 'Bearer',
+      expiresInSeconds: 86400,
+      user,
+    },
+    400
+  )
+}
+
+export async function mockRegisterOrg(
+  body: RegisterOrgBody
+): Promise<LoginResponse> {
+  const orgName = body.orgName.trim()
+  const contactName = body.contactName.trim()
+  const username = body.username.trim()
+  if (orgName.length < 2) {
+    throw new ApiClientError('INVALID_ORG', '请填写机构名称')
+  }
+  if (contactName.length < 2) {
+    throw new ApiClientError('INVALID_CONTACT', '请填写联系人姓名')
+  }
+  if (username.length < 2) {
+    throw new ApiClientError('INVALID_USERNAME', '用户名至少 2 位')
+  }
+  if (body.password.length < 6) {
+    throw new ApiClientError('WEAK_PASSWORD', '密码至少 6 位')
+  }
+  const user: AuthUserProfile = {
+    id: 'mock-org-admin',
+    username,
+    fullName: contactName,
+    employeeNo: null,
+    deptId: null,
+    status: 'enabled',
+    roleCodes: ['org_admin'],
+    planCode: 'free',
+    tenantId: 'mock-tenant-1',
+    tenantName: orgName,
+    tenantSlug: 'mock-org',
+    lastLoginAt: new Date().toISOString(),
+  }
+  return withMockDelay(
+    {
+      accessToken: 'mock-access-token',
+      tokenType: 'Bearer',
+      expiresInSeconds: 86400,
+      user,
+    },
+    400
+  )
+}
+
+export async function mockRegisterMember(
+  body: RegisterMemberBody
+): Promise<LoginResponse> {
+  const username = body.username.trim()
+  const fullName = body.fullName.trim()
+  if (body.slug.trim().length < 2) {
+    throw new ApiClientError('INVALID_SLUG', '邀请链接无效')
+  }
+  if (fullName.length < 1) {
+    throw new ApiClientError('INVALID_CONTACT', '请填写姓名')
+  }
+  if (username.length < 2) {
+    throw new ApiClientError('INVALID_USERNAME', '用户名至少 2 位')
+  }
+  if (body.password.length < 6) {
+    throw new ApiClientError('WEAK_PASSWORD', '密码至少 6 位')
+  }
+  const user: AuthUserProfile = {
+    id: 'mock-org-member',
+    username,
+    fullName,
+    employeeNo: null,
+    deptId: null,
+    status: 'enabled',
+    roleCodes: ['end_user'],
+    planCode: 'free',
+    tenantId: 'mock-tenant-1',
+    tenantName: '演示机构',
+    tenantSlug: body.slug.trim(),
+    lastLoginAt: new Date().toISOString(),
+  }
   return withMockDelay(
     {
       accessToken: 'mock-access-token',

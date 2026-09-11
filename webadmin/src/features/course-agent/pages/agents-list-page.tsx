@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Bot, MessageSquare, Play, Plus, Star, Trash2 } from 'lucide-react'
+import { Bot, MessageSquare, Plus, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
 import {
   deleteCourseAgent,
   listCourseAgents,
-  runCourseAgentSchedule,
   setDefaultCourseAgent,
 } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
@@ -22,16 +21,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { getBillingMe } from '@/lib/api/billing'
+import {
+  useAgentConsolePaths,
+  useIsPlatformConsole,
+} from '@/lib/auth/console-paths'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import {
   agentTypeLabel,
   CreateAgentDialog,
 } from '../components/create-agent-dialog'
 import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
-import {
-  isAgentVisibleInChat,
-  isScheduledHarnessAgent,
-} from '../lib/agent-schedule'
+import { isAgentVisibleInChat } from '../lib/agent-schedule'
 import type { CourseAgentSummary } from '../data/types'
 
 function statusLabel(status: CourseAgentSummary['status']) {
@@ -60,6 +61,9 @@ export function CourseAgentsListPage() {
   const navigate = useNavigate()
   const { can } = useAppPermissions()
   const canConfig = can('course_agent_config')
+  const platform = useIsPlatformConsole()
+  const agentPaths = useAgentConsolePaths()
+  const [canUseHarness, setCanUseHarness] = useState(platform)
   const [agents, setAgents] = useState<CourseAgentSummary[]>([])
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
@@ -69,7 +73,6 @@ export function CourseAgentsListPage() {
   )
   const [deleting, setDeleting] = useState(false)
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null)
-  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null)
   const invalidateAgents = useInvalidateCourseAgents()
 
   const loadAgents = useCallback(async () => {
@@ -77,12 +80,20 @@ export function CourseAgentsListPage() {
     setError(undefined)
     try {
       setAgents(await listCourseAgents())
+      if (!platform) {
+        try {
+          const mine = await getBillingMe()
+          setCanUseHarness(Boolean(mine.canUseHarnessAgent))
+        } catch {
+          setCanUseHarness(false)
+        }
+      }
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : '加载失败')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [platform])
 
   useEffect(() => {
     void loadAgents()
@@ -101,20 +112,6 @@ export function CourseAgentsListPage() {
       toast.error(e instanceof ApiClientError ? e.message : '删除失败')
     } finally {
       setDeleting(false)
-    }
-  }
-
-  const handleRunSchedule = async (agent: CourseAgentSummary) => {
-    setRunningScheduleId(agent.agentId)
-    try {
-      const updated = await runCourseAgentSchedule(agent.agentId)
-      toast.success(updated.schedule?.lastRunNote || `「${agent.name}」已执行`)
-      invalidateAgents()
-      await loadAgents()
-    } catch (e) {
-      toast.error(e instanceof ApiClientError ? e.message : '执行失败')
-    } finally {
-      setRunningScheduleId(null)
     }
   }
 
@@ -142,9 +139,11 @@ export function CourseAgentsListPage() {
       <Main className='flex flex-1 flex-col gap-4 sm:gap-6'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
-            <h2 className='text-2xl font-bold tracking-tight'>Agent</h2>
+            <h2 className='text-2xl font-bold tracking-tight'>顾问配置</h2>
             <p className='text-muted-foreground'>
-              管理 Agent：模型、知识库与对话配置
+              {platform
+                ? '配置平台模板顾问。各机构在自己的顾问配置里维护，互不影响。'
+                : '只管理本机构顾问。左侧对话入口仅展示本机构已发布的版本。'}
             </p>
           </div>
           <Button
@@ -188,6 +187,10 @@ export function CourseAgentsListPage() {
 
         {loading ? (
           <p className='text-muted-foreground'>加载中…</p>
+        ) : agents.length === 0 ? (
+          <p className='text-muted-foreground text-sm'>
+            暂无顾问。请点击「新建 Agent」创建。
+          </p>
         ) : (
           <div className='grid gap-4 md:grid-cols-2'>
             {agents.map((agent) => (
@@ -208,9 +211,6 @@ export function CourseAgentsListPage() {
                       <Badge variant='outline'>
                         {agentTypeLabel(agent.agentType ?? 'workflow')}
                       </Badge>
-                      {agent.scheduleEnabled ? (
-                        <Badge variant='secondary'>定时</Badge>
-                      ) : null}
                     </div>
                     <CardDescription className='mt-1 line-clamp-2'>
                       {agent.description}
@@ -223,24 +223,12 @@ export function CourseAgentsListPage() {
                 <CardContent className='flex flex-wrap gap-2'>
                   <Button size='sm' asChild>
                     <Link
-                      to='/admin/course-agents/$agentId'
+                      to={agentPaths.detail}
                       params={{ agentId: agent.agentId }}
                     >
                       配置管理
                     </Link>
                   </Button>
-                  {isScheduledHarnessAgent(agent) ? (
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!canConfig || runningScheduleId === agent.agentId}
-                      onClick={() => void handleRunSchedule(agent)}
-                    >
-                      <Play className='mr-1 size-3.5' />
-                      {runningScheduleId === agent.agentId ? '执行中…' : '立即执行'}
-                    </Button>
-                  ) : null}
                   {isAgentVisibleInChat(agent) ? (
                     <Button size='sm' asChild>
                       <Link
@@ -289,11 +277,18 @@ export function CourseAgentsListPage() {
       <CreateAgentDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
+        allowedTypes={
+          platform
+            ? undefined
+            : canUseHarness
+              ? ['basic', 'autonomous']
+              : ['basic']
+        }
         onCreated={(agentId) => {
           invalidateAgents()
           void loadAgents()
           void navigate({
-            to: '/admin/course-agents/$agentId',
+            to: agentPaths.detail,
             params: { agentId },
           })
         }}

@@ -17,6 +17,8 @@ from app.course_agent.lead_service import (
 )
 from app.db.models.user import User
 from app.course_agent.llm_helper import CourseAgentLlmHelper
+from app.course_agent.privacy import mask_display_name, mask_phone
+from app.services.billing import consume_chat_quota, require_agent_type_for_plan
 from app.course_agent.material_service import MaterialService
 from app.course_agent.model_service import ModelService
 from app.course_agent.rag import (
@@ -49,6 +51,7 @@ from app.db.models.course_agent import (
     CourseAgentRecord,
     CourseAgentSessionRecord,
 )
+from app.services.tenant_scope import TenantScope, apply_agent_tenant_filter
 from app.schemas.course_agent import (
     AdminSessionDetailDto,
     AdminSessionRecordDto,
@@ -210,9 +213,9 @@ def _apply_agent_type_defaults(cfg: dict, agent_type: CourseAgentType, name: str
         conversation["emptyInputMessage"] = "请输入您的问题"
         conversation["tooLongMessage"] = "输入内容过长，请精简后重试"
         cfg["reactConfig"] = default_react_config(agent_name=name)
-        from app.course_agent.schedule import normalize_schedule
+        from app.course_agent.schedule import force_chat_only_schedule
 
-        cfg["schedule"] = normalize_schedule({"enabled": False, "runMode": "chat"})
+        cfg["schedule"] = force_chat_only_schedule()
 
     cfg["conversation"] = conversation
     return cfg
@@ -233,23 +236,46 @@ def can_access_owned_session(
 
 
 class CourseAgentService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, scope: TenantScope | None = None) -> None:
         self.db = db
+        self.scope = scope or TenantScope.unrestricted()
         self.leads = CourseAgentLeadService(db)
+
+    def ensure_workspace(self) -> None:
+        if self.scope.is_platform or self.scope.tenant_id is None:
+            return
+        from app.services.tenant_workspace import ensure_tenant_workspace
+
+        ensure_tenant_workspace(self.db, self.scope.tenant_id, commit=True)
 
     def list_leads(
         self, *, agent_id: str | None = None, limit: int = 50, offset: int = 0
     ) -> list[CourseAgentLeadSummaryDto]:
-        return self.leads.list_leads(agent_id=agent_id, limit=limit, offset=offset)
+        return self.leads.list_leads(
+            agent_id=agent_id,
+            limit=limit,
+            offset=offset,
+            tenant_id=None if self.scope.is_platform else self.scope.tenant_id,
+            platform=self.scope.is_platform,
+        )
 
     def get_lead(self, lead_id: uuid.UUID) -> CourseAgentLeadDetailDto:
-        return self.leads.get_lead_detail(lead_id)
+        dto = self.leads.get_lead_detail(lead_id)
+        row = self.db.get(CourseAgentRecord, dto.agentId)
+        self._assert_agent_row(row)
+        return dto
 
     def delete_lead(self, lead_id: uuid.UUID) -> dict[str, str]:
+        dto = self.leads.get_lead_detail(lead_id)
+        row = self.db.get(CourseAgentRecord, dto.agentId)
+        self._assert_agent_row(row)
         return self.leads.delete_lead(lead_id)
 
     def list_admin_session_groups(
-        self, agent_id: str | None = None
+        self,
+        agent_id: str | None = None,
+        from_dt: datetime | None = None,
+        to_dt: datetime | None = None,
     ) -> list[AdminUserSessionGroupDto]:
         stmt = (
             select(CourseAgentSessionRecord, CourseAgentRecord.name)
@@ -260,8 +286,13 @@ class CourseAgentService:
             .where(CourseAgentSessionRecord.id.in_(self._session_ids_with_user_messages()))
             .order_by(desc(CourseAgentSessionRecord.updated_at))
         )
+        stmt = apply_agent_tenant_filter(stmt, self.scope)
         if agent_id:
             stmt = stmt.where(CourseAgentSessionRecord.agent_id == agent_id)
+        if from_dt is not None:
+            stmt = stmt.where(CourseAgentSessionRecord.updated_at >= from_dt)
+        if to_dt is not None:
+            stmt = stmt.where(CourseAgentSessionRecord.updated_at <= to_dt)
         rows = [
             (session, agent_name)
             for session, agent_name in self.db.execute(stmt).all()
@@ -319,11 +350,19 @@ class CourseAgentService:
         if session is None or self._is_preview_session(session):
             raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
         agent = self.db.get(CourseAgentRecord, session.agent_id)
+        self._assert_agent_row(agent)
         user = self.db.get(User, session.user_id) if session.user_id else None
         dto = self._to_session_dto(session, include_all_messages=True)
+        payload = dto.model_dump()
+        messages = []
+        for item in payload.get("messages") or []:
+            if isinstance(item, dict) and item.get("content"):
+                item = {**item, "content": mask_phone(str(item.get("content") or ""))}
+            messages.append(item)
+        payload["messages"] = messages
         group = self._empty_session_group(session.user_id, user)
         return AdminSessionDetailDto(
-            **dto.model_dump(),
+            **payload,
             agentName=agent.name if agent else session.agent_id,
             userId=group.userId,
             username=group.username,
@@ -335,6 +374,8 @@ class CourseAgentService:
         session = self.db.get(CourseAgentSessionRecord, session_id)
         if session is None:
             raise ApiBusinessError("NOT_FOUND", "会话不存在", 404)
+        agent = self.db.get(CourseAgentRecord, session.agent_id)
+        self._assert_agent_row(agent)
         self.db.delete(session)
         self.db.commit()
 
@@ -353,20 +394,27 @@ class CourseAgentService:
         label = str(profile.get("personaLabel") or "").strip() or None
         return AdminUserSessionGroupDto(
             userId=str(user.id),
-            username=user.username,
-            fullName=user.full_name or user.username,
+            username=mask_display_name(user.username),
+            fullName=mask_display_name(user.full_name or user.username),
             personaLabel=label,
         )
 
     def list_agents(self) -> list[CourseAgentSummaryDto]:
+        self.ensure_workspace()
         rows = self.db.scalars(
-            select(CourseAgentRecord).order_by(CourseAgentRecord.updated_at.desc())
+            apply_agent_tenant_filter(
+                select(CourseAgentRecord).order_by(CourseAgentRecord.updated_at.desc()),
+                self.scope,
+            )
         ).all()
         return [self._to_summary(row) for row in rows]
 
     def get_default_agent_id(self) -> str | None:
         rows = self.db.scalars(
-            select(CourseAgentRecord).order_by(CourseAgentRecord.updated_at.desc())
+            apply_agent_tenant_filter(
+                select(CourseAgentRecord).order_by(CourseAgentRecord.updated_at.desc()),
+                self.scope,
+            )
         ).all()
         if not rows:
             return None
@@ -377,7 +425,12 @@ class CourseAgentService:
 
     def set_default_agent(self, agent_id: str) -> CourseAgentConfigDto:
         target = self._get_agent_row(agent_id, require_active=False)
-        rows = self.db.scalars(select(CourseAgentRecord)).all()
+        peer_stmt = select(CourseAgentRecord)
+        if target.tenant_id is None:
+            peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id.is_(None))
+        else:
+            peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id == target.tenant_id)
+        rows = self.db.scalars(peer_stmt).all()
         for row in rows:
             cfg = dict(row.config_json or {})
             want = row.agent_id == target.agent_id
@@ -405,21 +458,26 @@ class CourseAgentService:
         )
         cfg = _apply_agent_type_defaults(cfg, body.agentType, body.name.strip())
 
-        existing_count = self.db.scalar(
-            select(func.count()).select_from(CourseAgentRecord)
-        ) or 0
+        tenant_id = None if self.scope.is_platform else self.scope.tenant_id
+        peer_stmt = select(func.count()).select_from(CourseAgentRecord)
+        if tenant_id is None:
+            peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id.is_(None))
+        else:
+            peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id == tenant_id)
+        existing_count = self.db.scalar(peer_stmt) or 0
 
         row = CourseAgentRecord(
             agent_id=agent_id,
             name=body.name.strip(),
             description=body.description.strip(),
             status="draft",
+            tenant_id=tenant_id,
             config_json=cfg,
         )
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)
-        MaterialService(self.db).ensure_agent_materials(agent_id)
+        MaterialService(self.db, scope=self.scope).ensure_agent_materials(agent_id)
         if existing_count == 0:
             return self.set_default_agent(agent_id)
         return self._to_config_dto(row)
@@ -427,8 +485,9 @@ class CourseAgentService:
     def delete_agent(self, agent_id: str) -> dict[str, str]:
         target = self._get_agent_row(agent_id, require_active=False)
         was_default = _is_default_agent(target.config_json or {})
+        tenant_id = target.tenant_id
         # 知识库 / 模型为平台独立资源，删除 Agent 时不级联删除；仅解除遗留归属
-        material = MaterialService(self.db)
+        material = MaterialService(self.db, scope=self.scope)
         for row in material._list_kb_rows(agent_id):
             row.agent_id = None
         models = ModelService(self.db)
@@ -444,15 +503,20 @@ class CourseAgentService:
         self.db.commit()
 
         if was_default:
-            next_default = self.db.scalars(
-                select(CourseAgentRecord).order_by(CourseAgentRecord.updated_at.desc())
-            ).first()
+            peer_stmt = select(CourseAgentRecord).order_by(
+                CourseAgentRecord.updated_at.desc()
+            )
+            if tenant_id is None:
+                peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id.is_(None))
+            else:
+                peer_stmt = peer_stmt.where(CourseAgentRecord.tenant_id == tenant_id)
+            next_default = self.db.scalars(peer_stmt).first()
             if next_default is not None:
                 self.set_default_agent(next_default.agent_id)
         return {"message": "Agent 已删除"}
 
     def get_agent(self, agent_id: str) -> CourseAgentConfigDto:
-        MaterialService(self.db).ensure_agent_materials(agent_id)
+        MaterialService(self.db, scope=self.scope).ensure_agent_materials(agent_id)
         ModelService(self.db).list_models(agent_id)
         row = self._get_agent_row(agent_id, require_active=False)
         return self._to_config_dto(row)
@@ -505,7 +569,11 @@ class CourseAgentService:
                         bound.append(kb_id)
             if bound:
                 cfg["boundKnowledgeBaseIds"] = bound
-        if body.schedule is not None:
+        if _read_agent_type(cfg) == "autonomous":
+            from app.course_agent.schedule import force_chat_only_schedule
+
+            cfg["schedule"] = force_chat_only_schedule(cfg.get("schedule"))
+        elif body.schedule is not None:
             from app.course_agent.schedule import normalize_schedule
 
             incoming = normalize_schedule(body.schedule.model_dump())
@@ -617,6 +685,9 @@ class CourseAgentService:
         self.db.delete(session)
         self.db.commit()
 
+    def _assert_agent_type_allowed(self, owner: User | None, cfg: dict) -> None:
+        require_agent_type_for_plan(owner, self.db, _read_agent_type(cfg))
+
     def send_message(
         self,
         session_id: uuid.UUID,
@@ -629,8 +700,14 @@ class CourseAgentService:
         if is_restart_text(content):
             return self.reset_session(session_id, visitor=visitor, user_id=user_id)
 
+        owner = self.db.get(User, user_id) if user_id else None
+        consume_chat_quota(
+            self.db, owner, is_preview=self._is_preview_session(session)
+        )
+
         agent = self._get_agent_row(session.agent_id)
         cfg = agent.config_json or {}
+        self._assert_agent_type_allowed(owner, cfg)
         if self._uses_workflow(cfg):
             return self._send_workflow_message(
                 session, agent, content, visitor=visitor
@@ -882,8 +959,14 @@ class CourseAgentService:
                 yield "done", dto.model_dump()
                 return
 
+            owner = self.db.get(User, user_id) if user_id else None
+            consume_chat_quota(
+                self.db, owner, is_preview=self._is_preview_session(session)
+            )
+
             agent = self._get_agent_row(session.agent_id)
             cfg = agent.config_json or {}
+            self._assert_agent_type_allowed(owner, cfg)
             if self._uses_workflow(cfg):
                 yield from self._iter_workflow_message_events(
                     session, agent, content, visitor=visitor, as_dict=True
@@ -1005,7 +1088,10 @@ class CourseAgentService:
         cfg = agent.config_json or {}
         react_cfg = normalize_react_config(cfg.get("reactConfig") or {})
         if not has_knowledge_tools(react_cfg.get("tools")):
-            kbs = MaterialService(self.db).ensure_agent_materials(agent.agent_id)
+            kbs = MaterialService(
+                self.db,
+                scope=TenantScope(tenant_id=agent.tenant_id, is_platform=False),
+            ).list_all_knowledge_bases()
             kb_dicts = [
                 {
                     "id": item.id,
@@ -1221,10 +1307,7 @@ class CourseAgentService:
 
         reply_content: str
         if not hits:
-            reply_content = (
-                "知识库中暂无可用资料（当前文档数 0、切片数 0），无法检索到相关内容。"
-                "请先在「知识库」上传文档，等待解析与索引完成后再试。"
-            )
+            reply_content = "该问题不在我的知识范围内"
         elif llm.is_available():
             # 流式生成（与 generate_preview_reply 同构）
             from app.course_agent.llm_helper import resolve_system_prompt
@@ -1431,10 +1514,7 @@ class CourseAgentService:
 
         reply_content: str
         if not hits:
-            reply_content = (
-                "知识库中暂无可用资料（当前文档数 0、切片数 0），无法检索到相关内容。"
-                "请先在「知识库」上传文档，等待解析与索引完成后再试。"
-            )
+            reply_content = "该问题不在我的知识范围内"
         elif llm.is_available():
             from app.course_agent.llm_helper import resolve_system_prompt
 
@@ -1506,14 +1586,23 @@ class CourseAgentService:
         self, agent_id: str, *, require_active: bool = True
     ) -> CourseAgentRecord:
         row = self.db.get(CourseAgentRecord, agent_id)
-        if row is None:
-            raise ApiBusinessError("NOT_FOUND", f"Agent {agent_id} 不存在", 404)
+        self._assert_agent_row(row, agent_id=agent_id)
         if require_active and row.status != "active":
             raise ApiBusinessError(
                 "AGENT_INACTIVE",
                 "Agent 未启用（当前为草稿/停用）。请先将状态设为启用后再进行对话。",
                 400,
             )
+        return row
+
+    def _assert_agent_row(
+        self, row: CourseAgentRecord | None, *, agent_id: str | None = None
+    ) -> CourseAgentRecord:
+        if row is None:
+            label = agent_id or "Agent"
+            raise ApiBusinessError("NOT_FOUND", f"Agent {label} 不存在", 404)
+        if not self.scope.allows_resource(row.tenant_id):
+            raise ApiBusinessError("NOT_FOUND", f"Agent {row.agent_id} 不存在", 404)
         return row
 
     def _require_session(
@@ -1601,10 +1690,14 @@ class CourseAgentService:
         )
 
     def _to_summary(self, row: CourseAgentRecord) -> CourseAgentSummaryDto:
-        from app.course_agent.schedule import normalize_schedule
+        from app.course_agent.schedule import force_chat_only_schedule, normalize_schedule
 
         cfg = row.config_json or {}
-        schedule = normalize_schedule(cfg.get("schedule"))
+        schedule = (
+            force_chat_only_schedule(cfg.get("schedule"))
+            if _read_agent_type(cfg) == "autonomous"
+            else normalize_schedule(cfg.get("schedule"))
+        )
         return CourseAgentSummaryDto(
             agentId=row.agent_id,
             name=row.name,
@@ -1615,16 +1708,22 @@ class CourseAgentService:
             visibleInChat=bool(schedule["visibleInChat"]),
             runMode=str(schedule["runMode"]),
             scheduleEnabled=bool(schedule["enabled"]),
+            tenantId=str(row.tenant_id) if row.tenant_id else None,
             updatedAt=_iso(row.updated_at),
         )
 
     def _to_config_dto(self, row: CourseAgentRecord) -> CourseAgentConfigDto:
         cfg = dict(row.config_json or {})
         model_svc = ModelService(self.db)
-        material_svc = MaterialService(self.db)
+        material_svc = MaterialService(self.db, scope=self.scope)
 
         models = model_svc.list_models(row.agent_id)
         knowledge_bases = material_svc.ensure_agent_materials(row.agent_id)
+        if not knowledge_bases:
+            knowledge_bases = MaterialService(
+                self.db,
+                scope=TenantScope(tenant_id=row.tenant_id, is_platform=False),
+            ).list_all_knowledge_bases()
         runtime = model_svc.get_runtime_model(row.agent_id)
         active_id = model_svc.get_active_model_id(row.agent_id)
 
@@ -1662,9 +1761,13 @@ class CourseAgentService:
                 )
                 react_cfg["tools"] = default_tools_from_knowledge_bases(kb_dicts)
 
-        from app.course_agent.schedule import normalize_schedule
+        from app.course_agent.schedule import force_chat_only_schedule, normalize_schedule
 
-        schedule = normalize_schedule(cfg.get("schedule"))
+        schedule = (
+            force_chat_only_schedule(cfg.get("schedule"))
+            if _read_agent_type(cfg) == "autonomous"
+            else normalize_schedule(cfg.get("schedule"))
+        )
 
         return CourseAgentConfigDto(
             agentId=row.agent_id,

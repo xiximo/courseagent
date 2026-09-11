@@ -12,6 +12,7 @@ import { AppErrorAlert } from '@/components/app-error-alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Collapsible,
   CollapsibleContent,
@@ -60,6 +61,8 @@ export function AgentLeadsPage() {
   const [groups, setGroups] = useState<AdminUserSessionGroup[]>([])
   const [agents, setAgents] = useState<CourseAgentSummary[]>([])
   const [agentFilter, setAgentFilter] = useState<string>('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [openUsers, setOpenUsers] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
@@ -75,6 +78,8 @@ export function AgentLeadsPage() {
       const [sessionGroups, agentRows] = await Promise.all([
         listAdminSessionRecords({
           agentId: agentFilter === 'all' ? undefined : agentFilter,
+          from: fromDate ? `${fromDate}T00:00:00` : undefined,
+          to: toDate ? `${toDate}T23:59:59` : undefined,
         }),
         listCourseAgents(),
       ])
@@ -91,7 +96,7 @@ export function AgentLeadsPage() {
     } finally {
       setLoading(false)
     }
-  }, [agentFilter])
+  }, [agentFilter, fromDate, toDate])
 
   useEffect(() => {
     void reload()
@@ -132,11 +137,24 @@ export function AgentLeadsPage() {
         <div>
           <h2 className='text-2xl font-bold tracking-tight'>用户会话记录</h2>
           <p className='text-muted-foreground'>
-            按登录用户查看全部对话历史。共 {groups.length} 位用户、
+            按登录用户查看全部对话历史（已脱敏）。共 {groups.length} 位用户、
             {totalSessions} 条会话。
           </p>
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Input
+            type='date'
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className='w-[150px]'
+          />
+          <span className='text-muted-foreground text-sm'>至</span>
+          <Input
+            type='date'
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className='w-[150px]'
+          />
           <Select value={agentFilter} onValueChange={setAgentFilter}>
             <SelectTrigger className='w-[220px]'>
               <SelectValue placeholder='筛选 Agent' />

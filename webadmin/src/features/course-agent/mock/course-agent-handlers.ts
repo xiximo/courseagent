@@ -511,6 +511,9 @@ export async function mockGetPublicAgentConfig(agentId: string) {
 export async function mockCreateKnowledgeBase(body: {
   name: string
   description?: string
+  chunkMode?: string
+  chunkMaxChars?: number
+  chunkOverlapChars?: number
 }): Promise<CourseAgentKnowledgeBase> {
   const materialLabel = `material_${Date.now().toString(36)}`
   const kb: CourseAgentKnowledgeBase = {
@@ -522,6 +525,9 @@ export async function mockCreateKnowledgeBase(body: {
     chunkCount: 0,
     lastIndexedAt: new Date().toISOString(),
     status: 'ready',
+    chunkMode: body.chunkMode === 'chapter' ? 'chapter' : 'size',
+    chunkMaxChars: body.chunkMaxChars ?? 1800,
+    chunkOverlapChars: body.chunkOverlapChars ?? 200,
   }
   PLATFORM_KNOWLEDGE_BASES = [kb, ...PLATFORM_KNOWLEDGE_BASES]
   mockDocuments.set(materialLabel, [])
@@ -530,14 +536,24 @@ export async function mockCreateKnowledgeBase(body: {
 
 export async function mockUpdateKnowledgeBase(
   kbId: string,
-  body: { name: string; description?: string }
+  body: {
+    name: string
+    description?: string
+    chunkMode?: string
+    chunkMaxChars?: number
+    chunkOverlapChars?: number
+  }
 ): Promise<CourseAgentKnowledgeBase> {
   const index = PLATFORM_KNOWLEDGE_BASES.findIndex((kb) => kb.id === kbId)
   if (index < 0) throw new ApiClientError('NOT_FOUND', '知识库不存在')
+  const current = PLATFORM_KNOWLEDGE_BASES[index]!
   const updated: CourseAgentKnowledgeBase = {
-    ...PLATFORM_KNOWLEDGE_BASES[index]!,
+    ...current,
     name: body.name,
     description: body.description ?? '',
+    chunkMode: body.chunkMode ?? current.chunkMode ?? 'size',
+    chunkMaxChars: body.chunkMaxChars ?? current.chunkMaxChars ?? 1800,
+    chunkOverlapChars: body.chunkOverlapChars ?? current.chunkOverlapChars ?? 200,
   }
   PLATFORM_KNOWLEDGE_BASES = [
     ...PLATFORM_KNOWLEDGE_BASES.slice(0, index),

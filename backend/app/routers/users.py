@@ -24,7 +24,7 @@ from app.services.users import (
     get_user_by_id,
     list_users,
     reset_user_password,
-    to_user_account_dto,
+    to_user_account_dto_with_tenant,
     update_user,
 )
 
@@ -72,7 +72,7 @@ def post_user(
         role_codes=body.roleCodes,
         profile=body.profile.model_dump(),
     )
-    return success(to_user_account_dto(user), message="用户已创建")
+    return success(to_user_account_dto_with_tenant(db, user), message="用户已创建")
 
 
 @router.patch("/{user_id}", response_model=ApiResponse[UserAccountDto])
@@ -94,7 +94,7 @@ def patch_user(
         profile=body.profile.model_dump() if body.profile else None,
         password=body.password,
     )
-    return success(to_user_account_dto(updated), message="用户已更新")
+    return success(to_user_account_dto_with_tenant(db, updated), message="用户已更新")
 
 
 @router.delete("/{user_id}", response_model=ApiResponse[DeleteUserResultDto])

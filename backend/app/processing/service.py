@@ -15,7 +15,7 @@ from app.db.models.attachment import (
     TextChunk,
 )
 from app.db.models.standard import Standard, StandardSyncStatus
-from app.processing.chunker import chunk_attachment_text
+from app.processing.chunker import chunk_attachment_text, normalize_chunk_options
 from app.indexing.service import maybe_auto_index_after_chunk
 from app.processing.figure_assets import (
     FigureAssetInput,
@@ -204,6 +204,7 @@ class ProcessingService:
             text_row.content,
             doc_role=doc_role,
             parse_quality=parse_quality,
+            options=self._chunk_options_for_attachment(attachment),
         )
 
         existing_version = (
@@ -243,6 +244,18 @@ class ProcessingService:
         self._refresh_standard_sync_status(attachment.standard_id)
         self.db.commit()
         maybe_auto_index_after_chunk(self.db, attachment.id)
+
+    def _chunk_options_for_attachment(self, attachment: Attachment):
+        from app.db.models.course_agent_resources import CourseAgentKnowledgeBaseRecord
+
+        record = self.db.scalar(
+            select(CourseAgentKnowledgeBaseRecord).where(
+                CourseAgentKnowledgeBaseRecord.standard_id == attachment.standard_id
+            )
+        )
+        if record is None:
+            return None
+        return normalize_chunk_options(record)
 
     def extract_all_for_standard(self, standard_id: uuid.UUID) -> int:
         attachments = self.db.scalars(

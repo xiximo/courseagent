@@ -22,6 +22,8 @@ export type UserAccount = {
   lastLoginAt: string | null
   createdAt: string | null
   isSeed: boolean
+  tenantId?: string | null
+  tenantName?: string | null
 }
 
 export type CreateUserInput = {

@@ -1,4 +1,4 @@
-import { useSearch } from '@tanstack/react-router'
+import { Link, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { Logo } from '@/assets/logo'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -29,6 +29,16 @@ export function SignIn() {
         </CardHeader>
         <CardContent className='px-8 pt-4 pb-10'>
           <UserAuthForm redirectTo={redirect} className='gap-4' />
+          <p className='text-muted-foreground mt-6 text-center text-sm'>
+            机构成员请用管理员给的账号登录；还没有机构空间？{' '}
+            <Link
+              to='/sign-up'
+              search={{ intent: undefined }}
+              className='text-foreground underline underline-offset-4'
+            >
+              开通免费试用
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </AuthLayout>

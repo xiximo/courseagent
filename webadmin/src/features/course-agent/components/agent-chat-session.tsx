@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { ApiClientError } from '@/lib/api/client'
 import {
   createCourseAgentSession,
@@ -7,6 +8,7 @@ import {
   sendCourseAgentMessageStream,
 } from '@/lib/api/course-agent'
 import { AppErrorAlert } from '@/components/app-error-alert'
+import { Button } from '@/components/ui/button'
 import { ChatContainer, ChatForm, ChatMessages } from '@/components/ui/chat'
 import { MessageInput } from '@/components/ui/message-input'
 import { CitationSourceSheet } from './citation-source-sheet'
@@ -262,7 +264,11 @@ export function AgentChatSession({
         },
       })
     } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : '发送失败，请稍后重试')
+      if (e instanceof ApiClientError && e.code === 'QUOTA_EXCEEDED') {
+        setError('已用完，请升级')
+      } else {
+        setError(e instanceof ApiClientError ? e.message : '发送失败，请稍后重试')
+      }
       setInput(trimmed)
     } finally {
       setLoading(false)
@@ -297,8 +303,15 @@ export function AgentChatSession({
       >
         <div className='flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4'>
         {error ? (
-          <div className='mb-3'>
+          <div className='mb-3 space-y-2'>
             <AppErrorAlert message={error} />
+            {error.includes('请升级') ? (
+              <Button asChild size='sm'>
+                <Link to='/plans' search={{ pay: undefined }}>
+                  前往套餐页升级
+                </Link>
+              </Button>
+            ) : null}
           </div>
         ) : null}
         {initializing ? (

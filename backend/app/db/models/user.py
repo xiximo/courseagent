@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,7 +33,17 @@ class User(Base):
         index=True,
     )
     role_codes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     profile_json: Mapped[dict] = mapped_column(JSONB, default=dict)
+    plan_code: Mapped[str] = mapped_column(String(16), default="free", index=True)
+    plan_upgraded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

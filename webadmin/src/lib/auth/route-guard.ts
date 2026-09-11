@@ -1,8 +1,8 @@
 import { redirect } from '@tanstack/react-router'
 import type { AuthUserProfile } from '@/lib/api/auth'
-import { canAccessPath } from './permissions'
+import { canAccessPath, isPlatformAdmin } from './permissions'
 
-function loadUser(): AuthUserProfile | null {
+export function loadAuthUser(): AuthUserProfile | null {
   if (typeof localStorage === 'undefined') return null
   const raw = localStorage.getItem('taixing_auth_user')
   if (!raw) return null
@@ -14,9 +14,17 @@ function loadUser(): AuthUserProfile | null {
 }
 
 export function appRouteGuard(path: string) {
-  const user = loadUser()
-  const roleCodes = user?.roleCodes ?? []
+  const roleCodes = loadAuthUser()?.roleCodes ?? []
   if (!canAccessPath(roleCodes, path)) {
     throw redirect({ to: '/403' })
   }
+}
+
+export function redirectIfPlatform(to: string, params?: Record<string, string>) {
+  const roleCodes = loadAuthUser()?.roleCodes ?? []
+  if (!isPlatformAdmin(roleCodes)) return
+  throw redirect({
+    to,
+    params,
+  })
 }

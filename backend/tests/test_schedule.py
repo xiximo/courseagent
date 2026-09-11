@@ -1,5 +1,10 @@
 from app.course_agent.profile_tools import parse_profile_extract_payload
-from app.course_agent.schedule import is_visible_in_chat, normalize_schedule
+from app.course_agent.schedule import (
+    force_chat_only_schedule,
+    is_visible_in_chat,
+    normalize_schedule,
+    run_due_harness_jobs,
+)
 
 
 def test_normalize_schedule_defaults():
@@ -41,3 +46,15 @@ def test_parse_profile_extract_payload():
     data = parse_profile_extract_payload(fenced)
     assert data["allergies"] == ["花生"]
     assert parse_profile_extract_payload('{"hasUpdate": false}')["hasUpdate"] is False
+
+
+def test_force_chat_only_schedule_disables_timer():
+    data = force_chat_only_schedule({"enabled": True, "runMode": "scheduled"})
+    assert data["enabled"] is False
+    assert data["runMode"] == "chat"
+    assert data["visibleInChat"] is True
+
+
+def test_run_due_harness_jobs_is_retired():
+    assert run_due_harness_jobs(None) == 0
+

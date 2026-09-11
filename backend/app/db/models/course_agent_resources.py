@@ -24,6 +24,12 @@ class CourseAgentKnowledgeBaseRecord(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     # 遗留字段：历史数据可能仍有值；新库不再依赖 Agent
     agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     material_label: Mapped[str] = mapped_column(String(128))
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -33,6 +39,9 @@ class CourseAgentKnowledgeBaseRecord(Base):
         ForeignKey("standard.id", ondelete="RESTRICT"),
     )
     status: Mapped[str] = mapped_column(String(16), default="ready")
+    chunk_mode: Mapped[str] = mapped_column(String(16), default="size")
+    chunk_max_chars: Mapped[int] = mapped_column(Integer, default=1800)
+    chunk_overlap_chars: Mapped[int] = mapped_column(Integer, default=200)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

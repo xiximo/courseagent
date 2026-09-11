@@ -12,14 +12,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useInvalidateCourseAgents } from '../hooks/use-course-agents-query'
 import {
@@ -27,24 +19,15 @@ import {
   DEFAULT_REACT_PROHIBITION,
   DEFAULT_REACT_SOUL,
   DEFAULT_REACT_WELCOME,
+  isLegacyDefaultToolName,
 } from '../lib/react-agent-defaults'
-import {
-  HARNESS_PROFILE_TOOLS,
-  isProfileTool,
-  withHarnessProfileTools,
-} from '../lib/harness-profile-tools'
-import {
-  DEFAULT_AGENT_SCHEDULE,
-  normalizeAgentSchedule,
-  splitScheduleInterval,
-  toIntervalHours,
-} from '../lib/agent-schedule'
+import { isProfileTool, withoutProfileTools } from '../lib/harness-profile-tools'
+import { DEFAULT_AGENT_SCHEDULE } from '../lib/agent-schedule'
 import type {
   CourseAgentConfig,
   CourseAgentKnowledgeBase,
   CourseAgentModelProfile,
   CourseAgentReactTool,
-  CourseAgentSchedule,
 } from '../data/types'
 
 type ReactAgentConfigWorkspaceProps = {
@@ -56,23 +39,22 @@ type ReactAgentConfigWorkspaceProps = {
 function emptyTool(index: number): CourseAgentReactTool {
   return {
     id: `tool_${Date.now().toString(36)}_${index}`,
-    name: `search_kb_${index + 1}`,
+    name: `search_docs_${index + 1}`,
     description: '',
     knowledgeBaseIds: [],
     enabled: true,
   }
 }
 
-function isCoreKb(kb: CourseAgentKnowledgeBase) {
-  const blob = `${kb.materialLabel} ${kb.name}`.toLowerCase()
-  return ['material_a', 'material_b', '膳食指南', '饮食计划', '营养'].some((t) =>
-    blob.includes(t)
-  )
-}
-
-function isPlatformKb(kb: CourseAgentKnowledgeBase) {
-  const blob = `${kb.materialLabel} ${kb.name}`.toLowerCase()
-  return ['material_c', '白皮书', '平台服务', '会员'].some((t) => blob.includes(t))
+function visibleConfigTools(tools: CourseAgentReactTool[]) {
+  return withoutProfileTools(tools)
+    .filter((tool) => !isLegacyDefaultToolName(tool.name))
+    .map((tool) => ({
+      ...tool,
+      knowledgeBaseIds: Array.isArray(tool.knowledgeBaseIds)
+        ? tool.knowledgeBaseIds
+        : [],
+    }))
 }
 
 export function ReactAgentConfigWorkspace({
@@ -95,16 +77,7 @@ export function ReactAgentConfigWorkspace({
     react?.prohibitionRules || DEFAULT_REACT_PROHIBITION
   )
   const [tools, setTools] = useState<CourseAgentReactTool[]>(
-    withHarnessProfileTools(react?.tools ?? [])
-  )
-  const [schedule, setSchedule] = useState<CourseAgentSchedule>(
-    normalizeAgentSchedule(config.schedule)
-  )
-  const [intervalUnit, setIntervalUnit] = useState<'hours' | 'minutes'>(
-    splitScheduleInterval(config.schedule?.intervalHours ?? 2).unit
-  )
-  const [intervalValue, setIntervalValue] = useState(
-    splitScheduleInterval(config.schedule?.intervalHours ?? 2).value
+    visibleConfigTools(react?.tools ?? [])
   )
   const [modelIds, setModelIds] = useState<string[]>(config.boundModelIds ?? [])
   const [catalogKbs, setCatalogKbs] = useState<CourseAgentKnowledgeBase[]>([])
@@ -127,12 +100,7 @@ export function ReactAgentConfigWorkspace({
     setProhibitionRules(
       config.reactConfig?.prohibitionRules || DEFAULT_REACT_PROHIBITION
     )
-    setTools(withHarnessProfileTools(config.reactConfig?.tools ?? []))
-    const nextSchedule = normalizeAgentSchedule(config.schedule)
-    setSchedule(nextSchedule)
-    const split = splitScheduleInterval(nextSchedule.intervalHours)
-    setIntervalUnit(split.unit)
-    setIntervalValue(split.value)
+    setTools(visibleConfigTools(config.reactConfig?.tools ?? []))
     setModelIds(config.boundModelIds ?? [])
   }, [config])
 
@@ -167,40 +135,21 @@ export function ReactAgentConfigWorkspace({
     [catalogKbs]
   )
 
-  const applyContestPreset = () => {
-    const core = catalogKbs.filter(isCoreKb)
-    const platform = catalogKbs.filter(isPlatformKb)
-    const next: CourseAgentReactTool[] = [...HARNESS_PROFILE_TOOLS]
-    if (core.length) {
-      next.push({
-        id: 'tool_core_nutrition',
-        name: 'search_core_nutrition',
-        description:
-          '检索核心营养知识库（膳食指南、个性化饮食计划）。用于减脂/增肌/调理推荐、食材营养成分、搭配原则、禁忌与替换。禁止用于会员价格、企业合作或平台套餐介绍。',
-        knowledgeBaseIds: core.map((kb) => kb.id),
-        enabled: true,
-      })
-    }
-    if (platform.length) {
-      next.push({
-        id: 'tool_platform',
-        name: 'search_platform_guide',
-        description:
-          '检索健康优选平台白皮书。仅用于平台介绍、会员订阅、企业健康管理、合作方案。禁止用于膳食方案推荐或营养成分问答。',
-        knowledgeBaseIds: platform.map((kb) => kb.id),
-        enabled: true,
-      })
-    }
-    if (!next.length) {
-      toast.error('未识别到核心营养库或平台白皮书，请先创建并命名知识库，或手动添加工具。')
+  const applyKbTools = () => {
+    if (!catalogKbs.length) {
+      toast.error('当前没有可绑定的知识库，请先创建知识库。')
       return
     }
-    setSoul(DEFAULT_REACT_SOUL)
-    setProhibitionRules(DEFAULT_REACT_PROHIBITION)
-    setWelcomeMessage(DEFAULT_REACT_WELCOME)
-    setMenuButtons(DEFAULT_REACT_MENU_BUTTONS.join('，'))
-    setTools(next)
-    toast.success('已填入赛题膳食顾问预设（A+B 核心库 / C 平台库）')
+    setTools(
+      catalogKbs.map((kb, index) => ({
+        id: `tool_docs_${index + 1}`,
+        name: `search_docs_${index + 1}`,
+        description: `检索知识库「${kb.name}」。仅在问题与该库主题相关时调用。`,
+        knowledgeBaseIds: [kb.id],
+        enabled: true,
+      }))
+    )
+    toast.success('已按知识库生成检索工具')
   }
 
   const updateTool = (id: string, patch: Partial<CourseAgentReactTool>) => {
@@ -213,7 +162,7 @@ export function ReactAgentConfigWorkspace({
     setTools((list) =>
       list.map((item) => {
         if (item.id !== toolId) return item
-        const ids = item.knowledgeBaseIds
+        const ids = item.knowledgeBaseIds ?? []
         return {
           ...item,
           knowledgeBaseIds: checked
@@ -251,13 +200,13 @@ export function ReactAgentConfigWorkspace({
           soul: soul.trim() || DEFAULT_REACT_SOUL,
           prohibitionRules: prohibitionRules.trim() || DEFAULT_REACT_PROHIBITION,
           maxToolRounds: config.reactConfig?.maxToolRounds ?? 5,
-          tools: withHarnessProfileTools(tools),
+          tools: visibleConfigTools(tools),
         },
         schedule: {
-          ...schedule,
-          intervalHours: toIntervalHours(intervalValue, intervalUnit),
-          taskPrompt:
-            schedule.taskPrompt.trim() || DEFAULT_AGENT_SCHEDULE.taskPrompt,
+          ...DEFAULT_AGENT_SCHEDULE,
+          enabled: false,
+          runMode: 'chat',
+          visibleInChat: true,
         },
       })
       onSaved(updated)
@@ -276,7 +225,7 @@ export function ReactAgentConfigWorkspace({
         <div>
           <h2 className='font-semibold'>Harness 配置</h2>
           <p className='text-muted-foreground text-sm'>
-            Soul、禁止规则、用户画像工具，以及可按间隔自动跑的定时任务
+            Soul、禁止规则与知识库工具编排
           </p>
         </div>
         <Button
@@ -284,9 +233,9 @@ export function ReactAgentConfigWorkspace({
           variant='outline'
           size='sm'
           disabled={!canConfig || loadingCatalog}
-          onClick={applyContestPreset}
+          onClick={applyKbTools}
         >
-          填入赛题预设
+          按知识库生成工具
         </Button>
       </div>
       <ScrollArea className='min-h-0 flex-1'>
@@ -298,186 +247,8 @@ export function ReactAgentConfigWorkspace({
               value={name}
               disabled={!canConfig}
               onChange={(e) => setName(e.target.value)}
-              placeholder='例如：健康优选膳食顾问'
+              placeholder='例如：课程顾问'
             />
-          </div>
-
-          <div className='space-y-4 rounded-lg border p-4'>
-            <div className='flex items-start justify-between gap-3'>
-              <div>
-                <Label htmlFor='react-schedule-enabled'>定时任务</Label>
-                <p className='text-muted-foreground mt-1 text-xs'>
-                  到期后由 update_user_profile 读取各用户在库中的发言，用大模型归纳后写回画像，不创建聊天记录。需先发布 Agent。
-                </p>
-              </div>
-              <Switch
-                id='react-schedule-enabled'
-                checked={schedule.enabled}
-                disabled={!canConfig}
-                onCheckedChange={(checked) =>
-                  setSchedule((prev) => ({ ...prev, enabled: checked }))
-                }
-              />
-            </div>
-
-            <div className='grid gap-3 md:grid-cols-2'>
-              <div className='space-y-1.5'>
-                <Label>运行方式</Label>
-                <Select
-                  value={schedule.runMode}
-                  disabled={!canConfig}
-                  onValueChange={(value) => {
-                    const runMode = value as CourseAgentSchedule['runMode']
-                    setSchedule((prev) => ({
-                      ...prev,
-                      runMode,
-                      visibleInChat: runMode !== 'scheduled',
-                    }))
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='chat'>对话 + 可选定时</SelectItem>
-                    <SelectItem value='scheduled'>仅定时（不进对话入口）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-1.5'>
-                <Label>执行对象</Label>
-                <Select
-                  value={schedule.target}
-                  disabled={!canConfig}
-                  onValueChange={(value) =>
-                    setSchedule((prev) => ({
-                      ...prev,
-                      target: value as CourseAgentSchedule['target'],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='all_users'>全部启用账号</SelectItem>
-                    <SelectItem value='members'>仅普通用户（不含管理员）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='grid gap-3 md:grid-cols-3'>
-              <div className='space-y-1.5'>
-                <Label htmlFor='react-interval'>间隔</Label>
-                <Input
-                  id='react-interval'
-                  type='number'
-                  min={intervalUnit === 'minutes' ? 3 : 0.05}
-                  step={intervalUnit === 'minutes' ? 1 : 0.25}
-                  disabled={!canConfig}
-                  value={intervalValue}
-                  onChange={(e) => setIntervalValue(Number(e.target.value))}
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label>单位</Label>
-                <Select
-                  value={intervalUnit}
-                  disabled={!canConfig}
-                  onValueChange={(value) => {
-                    const unit = value as 'hours' | 'minutes'
-                    const hours = toIntervalHours(intervalValue, intervalUnit)
-                    setIntervalUnit(unit)
-                    if (unit === 'minutes') {
-                      setIntervalValue(Math.max(3, Math.round(hours * 60)))
-                    } else {
-                      setIntervalValue(
-                        Math.max(0.05, Math.round(hours * 100) / 100)
-                      )
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='hours'>小时</SelectItem>
-                    <SelectItem value='minutes'>分钟</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='space-y-1.5'>
-                <Label htmlFor='react-lookback'>回看对话（小时）</Label>
-                <Input
-                  id='react-lookback'
-                  type='number'
-                  min={1}
-                  max={720}
-                  disabled={!canConfig}
-                  value={schedule.lookbackHours}
-                  onChange={(e) =>
-                    setSchedule((prev) => ({
-                      ...prev,
-                      lookbackHours: Number(e.target.value) || 24,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            <label className='flex items-center gap-2 text-sm'>
-              <Checkbox
-                checked={schedule.onlyIfNewMessages}
-                disabled={!canConfig}
-                onCheckedChange={(v) =>
-                  setSchedule((prev) => ({
-                    ...prev,
-                    onlyIfNewMessages: Boolean(v),
-                  }))
-                }
-              />
-              仅当回看窗口内有用户新消息时才跑
-            </label>
-
-            <label className='flex items-center gap-2 text-sm'>
-              <Checkbox
-                checked={schedule.visibleInChat}
-                disabled={!canConfig}
-                onCheckedChange={(v) =>
-                  setSchedule((prev) => ({
-                    ...prev,
-                    visibleInChat: Boolean(v),
-                  }))
-                }
-              />
-              出现在侧栏「对话」入口
-            </label>
-
-            <div className='space-y-1.5'>
-              <Label htmlFor='react-task-prompt'>定时任务说明</Label>
-              <Textarea
-                id='react-task-prompt'
-                rows={4}
-                disabled={!canConfig}
-                value={schedule.taskPrompt}
-                onChange={(e) =>
-                  setSchedule((prev) => ({ ...prev, taskPrompt: e.target.value }))
-                }
-                className='font-mono text-xs'
-              />
-            </div>
-
-            {schedule.lastRunAt ? (
-              <p className='text-muted-foreground text-xs'>
-                上次执行：{new Date(schedule.lastRunAt).toLocaleString('zh-CN')}
-                {schedule.lastRunNote ? ` · ${schedule.lastRunNote}` : ''}
-              </p>
-            ) : (
-              <p className='text-muted-foreground text-xs'>
-                启用并发布后，服务会按间隔自动执行；最短间隔 3 分钟。
-              </p>
-            )}
           </div>
 
           <div className='space-y-2'>
@@ -498,7 +269,7 @@ export function ReactAgentConfigWorkspace({
               disabled={!canConfig}
               value={menuButtons}
               onChange={(e) => setMenuButtons(e.target.value)}
-              placeholder='减脂怎么吃，增肌蛋白质怎么补'
+              placeholder='北京线下班详情，我在上海周末有空'
             />
           </div>
 
@@ -525,34 +296,8 @@ export function ReactAgentConfigWorkspace({
               className='font-mono text-xs'
             />
             <p className='text-muted-foreground text-xs'>
-              会写入系统提示词，约束模型不得混淆核心营养库与平台白皮书，并强制医疗免责声明。
+              会写入系统提示词，约束模型不得编造班型或超出知识库作答。
             </p>
-          </div>
-
-          <div className='space-y-3'>
-            <Label>画像工具（内置）</Label>
-            <p className='text-muted-foreground text-xs'>
-              读取当前用户画像；对话中出现新事实时调用 update_user_profile。该工具会读数据库里的用户发言并用模型归纳后写回。登录用户会持久保存。
-            </p>
-            <div className='space-y-3'>
-              {tools.filter(isProfileTool).map((tool) => (
-                <div key={tool.id} className='space-y-2 rounded-lg border p-3'>
-                  <label className='flex items-center gap-2 text-sm'>
-                    <Checkbox
-                      checked={tool.enabled}
-                      disabled={!canConfig}
-                      onCheckedChange={(v) =>
-                        updateTool(tool.id, { enabled: Boolean(v) })
-                      }
-                    />
-                    启用 {tool.name}
-                  </label>
-                  <p className='text-muted-foreground text-xs leading-relaxed'>
-                    {tool.description}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className='space-y-3'>
@@ -569,9 +314,12 @@ export function ReactAgentConfigWorkspace({
                 添加工具
               </Button>
             </div>
+            <p className='text-muted-foreground text-xs'>
+              未绑定具体知识库时，问答会自动检索本机构当前的全部知识库，不会用模型自己的知识代替。
+            </p>
             {tools.filter((tool) => !isProfileTool(tool)).length === 0 ? (
               <p className='text-muted-foreground text-sm'>
-                尚未配置知识库工具。可点「填入赛题预设」，或手动添加并把知识库绑定到工具。
+                尚未单独配置知识库工具。对话时仍会检索本机构知识库；也可点「按知识库生成工具」做更细的绑定。
               </p>
             ) : (
               <div className='space-y-3'>
@@ -631,7 +379,7 @@ export function ReactAgentConfigWorkspace({
                         <p className='text-muted-foreground text-xs'>加载知识库…</p>
                       ) : catalogKbs.length === 0 ? (
                         <p className='text-muted-foreground text-xs'>
-                          平台还没有知识库，请先在知识库页创建并上传素材。
+                          还没有知识库，请先在知识库页创建并上传素材。
                         </p>
                       ) : (
                         <div className='grid gap-2 sm:grid-cols-2'>
@@ -641,7 +389,7 @@ export function ReactAgentConfigWorkspace({
                               className='flex items-start gap-2 text-sm'
                             >
                               <Checkbox
-                                checked={tool.knowledgeBaseIds.includes(kb.id)}
+                                checked={(tool.knowledgeBaseIds ?? []).includes(kb.id)}
                                 disabled={!canConfig}
                                 onCheckedChange={(v) =>
                                   toggleToolKb(tool.id, kb.id, Boolean(v))
@@ -657,7 +405,7 @@ export function ReactAgentConfigWorkspace({
                           ))}
                         </div>
                       )}
-                      {tool.knowledgeBaseIds
+                      {(tool.knowledgeBaseIds ?? [])
                         .filter((id) => !kbById.has(id))
                         .map((id) => (
                           <p key={id} className='text-muted-foreground text-xs'>

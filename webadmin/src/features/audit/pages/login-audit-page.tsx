@@ -60,7 +60,7 @@ export function LoginAuditPage() {
       <Main className='flex flex-1 flex-col gap-4 sm:gap-6'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
-            <h2 className='text-2xl font-bold tracking-tight'>日志审计</h2>
+            <h2 className='text-2xl font-bold tracking-tight'>审计日志</h2>
             <p className='text-muted-foreground'>
               仅记录用户登录账号、IP 地址与登录时间
             </p>

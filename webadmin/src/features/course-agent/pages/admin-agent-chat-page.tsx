@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiClientError } from '@/lib/api/client'
+import { getBillingMe, type BillingMe } from '@/lib/api/billing'
 import {
   deleteCourseAgentSession,
   getPublicAgentConfig,
@@ -16,6 +17,11 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
+import { useAgentConsolePaths } from '@/lib/auth/console-paths'
+import {
+  navigateToAppTarget,
+  resolveLoggedInHome,
+} from '@/lib/auth/home-path'
 import { useAppPermissions } from '@/hooks/use-app-permissions'
 import { AgentChatSession } from '../components/agent-chat-session'
 import type {
@@ -63,9 +69,12 @@ function formatSessionTime(iso: string) {
 }
 
 export function AdminAgentChatPage({ agentId }: AdminAgentChatPageProps) {
+  const navigate = useNavigate()
   const userId = useAuthStore((s) => s.auth.user?.id)
   const { can } = useAppPermissions()
   const canConfig = can('course_agent_config')
+  const canUpgrade = can('org_workspace')
+  const agentPaths = useAgentConsolePaths()
   const [agentName, setAgentName] = useState('智能体')
   const [sessions, setSessions] = useState<CourseAgentSessionSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -75,6 +84,7 @@ export function AdminAgentChatPage({ agentId }: AdminAgentChatPageProps) {
     null
   )
   const [deleting, setDeleting] = useState(false)
+  const [billing, setBilling] = useState<BillingMe | null>(null)
 
   const selectSession = useCallback(
     (sessionId: string) => {
@@ -114,6 +124,32 @@ export function AdminAgentChatPage({ agentId }: AdminAgentChatPageProps) {
     void ensureSessions()
   }, [ensureSessions])
 
+  useEffect(() => {
+    if (!error || !error.includes('不存在')) return
+    let cancelled = false
+    void (async () => {
+      const dest = await resolveLoggedInHome()
+      if (!cancelled) navigateToAppTarget(navigate, dest, true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [error, navigate])
+
+  useEffect(() => {
+    let cancelled = false
+    void getBillingMe()
+      .then((mine) => {
+        if (!cancelled) setBilling(mine)
+      })
+      .catch(() => {
+        if (!cancelled) setBilling(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const handleNewSession = () => {
     setSelectedId(null)
     writeStoredSessionId(agentId, userId, null)
@@ -149,15 +185,31 @@ export function AdminAgentChatPage({ agentId }: AdminAgentChatPageProps) {
         <div className='flex shrink-0 flex-wrap items-center justify-between gap-3'>
           <div>
             <h1 className='text-2xl font-bold tracking-tight'>{agentName}</h1>
-            <p className='text-muted-foreground text-sm'>直接提问，可在左侧管理会话，右侧查看运行轨迹</p>
+            <p className='text-muted-foreground text-sm'>
+              直接提问，可在左侧管理会话，右侧查看运行轨迹
+              {billing
+                ? billing.usage.limit == null
+                  ? ` · ${billing.planName}（不限次数）`
+                  : ` · ${billing.planName} 剩余 ${billing.usage.remaining ?? 0} 次`
+                : ''}
+            </p>
           </div>
-          {canConfig ? (
-            <Button variant='outline' size='sm' asChild>
-              <Link to='/admin/course-agents/$agentId' params={{ agentId }}>
-                前往配置
-              </Link>
-            </Button>
-          ) : null}
+          <div className='flex items-center gap-2'>
+            {canUpgrade ? (
+              <Button variant='outline' size='sm' asChild>
+                <Link to='/plans' search={{ pay: undefined }}>
+                  套餐与用量
+                </Link>
+              </Button>
+            ) : null}
+            {canConfig ? (
+              <Button variant='outline' size='sm' asChild>
+                <Link to={agentPaths.detail} params={{ agentId }}>
+                  前往配置
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {error ? <AppErrorAlert message={error} /> : null}

@@ -13,16 +13,19 @@ from app.db.session import engine
 from app.routers import (
     audit,
     auth,
+    billing,
     course_agent,
     harness,
     health,
     indexing,
     llm_settings,
+    org,
     processing,
     qa,
     qibiao,
     settings as settings_router,
     sync,
+    tenants,
     users,
 )
 from app.course_agent.bootstrap import init_database
@@ -141,3 +144,6 @@ app.include_router(llm_settings.router)
 app.include_router(harness.router)
 app.include_router(qibiao.router)
 app.include_router(course_agent.router)
+app.include_router(billing.router)
+app.include_router(tenants.router)
+app.include_router(org.router)

@@ -1,4 +1,4 @@
-"""Harness 智能体：知识库检索 + 用户画像工具，结合 Soul 与禁止规则规划问答。"""
+"""Harness 智能体：知识库检索与班型 Skill，结合 Soul 与禁止规则规划问答。"""
 
 from __future__ import annotations
 
@@ -12,15 +12,23 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.course_agent.model_runtime import resolve_agent_doubao_runtime
+from app.course_agent.course_skills import (
+    BUILTIN_COURSE_SKILLS,
+    COURSE_SKILL_SCHEMAS,
+    OUT_OF_KNOWLEDGE_REPLY,
+    execute_query_course_detail,
+    execute_recommend_courses,
+)
 from app.course_agent.profile_tools import (
-    BUILTIN_PROFILE_TOOLS,
     execute_get_profile,
     execute_update_profile,
 )
+from app.course_agent.material_service import MaterialService
 from app.course_agent.rag import (
     format_hits_for_prompt,
     hits_to_citations_from_hits,
     retrieve_by_kb_id,
+    retrieve_for_agent,
 )
 from app.course_agent.state_machine import Citation
 from app.course_agent.trace import format_json_detail, make_trace, tool_label
@@ -29,37 +37,33 @@ from app.llm.doubao_client import DoubaoClientError, chat_completion_turn
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOUL = """你是「健康优选」平台的 AI 智能膳食顾问，面向 25–45 岁都市白领，7×24 提供个性化膳食建议。
+DEFAULT_SOUL = """你是「AI教育中心」的课程顾问，面向学生、教师与机构提供班型咨询。
 
 你需要：
-1. 识别用户倾向：减脂塑形 / 增肌强化 / 慢病调理；也可根据「想减重」「在健身」「血糖偏高」等描述判断。
-2. 回答任何膳食方案、蛋白质、热量或食材问题前，必须先调用 get_user_profile，核对该用户的目标、约束、疾病与过敏。
-3. 用户新提到目标、疾病、过敏、忌口时，先调用 update_user_profile 写入画像，再检索资料回答。
-4. 从核心营养资料中推荐 1–2 个最匹配的膳食方案或食材组合，并给出 1–2 句推荐理由；推荐必须服从画像约束（例如肾病禁止高蛋白增肌方案）。
-5. 回答食材营养、搭配原则、禁忌、热量/蛋白质/GI 等问题时，必须依据工具返回的资料，并标注来源（文档名 + 章节）。
-6. 平台介绍、会员、企业合作问题，只使用平台资料工具，不要夹带膳食方案推荐。
-7. 使用简体中文，语气专业、克制、友好。"""
+1. 用户询问某个班型的时间、地点、费用、师资或大纲时，必须先调用 query_course_detail，再据此回答。
+2. 用户给出城市、时间偏好等约束（如「我在上海」「我只有周末有空」）时，必须先调用 recommend_courses，返回最匹配的 1–2 个班型及理由。
+3. 班型 Skill 返回 SKILL_FALLBACK 时：参数缺失则请用户补充，未找到则说明暂无匹配，不要编造班型。
+4. 资料性问答（已上传知识库文档中的内容）必须先检索知识库，并标注来源（文档名称 + 章节标题）。
+5. 知识库与班型目录都无法覆盖的问题，明确说明「该问题不在我的知识范围内」，不要猜测。
+6. 使用简体中文，语气专业、克制、友好。"""
 
-DEFAULT_PROHIBITION_RULES = """禁止规则：
-1. 不得编造营养数据、热量、GI 值、方案名称、价格、联系方式或 succeess case。
-2. 核心营养问题（推荐、食材、禁忌、膳食方案）禁止使用平台白皮书中的会员价格/企业合作信息。
-3. 平台介绍问题禁止输出膳食方案/食材推荐，避免两类资料混淆。
-4. 不得提供医疗诊断或治疗建议。用户提到疾病、血糖、血压、痛风、过敏时，必须附加：「本建议仅供参考，不构成医疗建议，请咨询专业医师或注册营养师」。
-5. 资料不足时明确说明「现有资料中未找到相关信息」，不要猜测。
-6. 未调用 get_user_profile 前，不得给出具体膳食方案或蛋白质/热量数字建议。
-7. 画像约束与知识库建议冲突时，以用户健康约束为准，并说明原因。
-8. 直接输出回复正文；引用格式示例：来源：《2026秋季健康膳食指南》· 秋季时令食材。"""
+DEFAULT_PROHIBITION_RULES = f"""禁止规则：
+1. 不得编造班型名称、价格、上课地点、师资、联系方式或成功案例。
+2. 班型详情与推荐必须来自 query_course_detail / recommend_courses 的返回，禁止用知识库片段拼凑不存在的班型。
+3. 资料不足或问题超出知识范围时，必须使用原句「{OUT_OF_KNOWLEDGE_REPLY}」，不要改写。
+4. 不得提供医疗诊断或治疗建议。
+5. 直接输出回复正文；引用格式示例：来源：《文档名称》· 章节标题。"""
 
 DEFAULT_WELCOME = (
-    "您好，我是健康优选 AI 膳食顾问。可咨询减脂、增肌或慢病调理怎么吃，"
-    "也可以了解平台会员与企业服务。请直接描述您的情况和问题。"
+    "您好，我是 AI 教育中心课程顾问。可查询班型详情、按城市和时间偏好推荐课程，"
+    "也可以基于已上传资料回答问题。请直接描述您的需求。"
 )
 
 DEFAULT_MENU_BUTTONS = [
-    "减脂怎么吃",
-    "增肌蛋白质怎么补",
-    "血糖高饮食注意",
-    "了解平台服务",
+    "北京线下班详情",
+    "上海线下班详情",
+    "我在上海，周末有空",
+    "只有工作日能上课",
 ]
 
 MEDICAL_MARKERS = (
@@ -108,8 +112,11 @@ def default_react_config(
 ) -> dict[str, Any]:
     tools = default_tools_from_knowledge_bases(knowledge_bases or [])
     welcome = DEFAULT_WELCOME
-    if agent_name.strip() and "膳食" not in agent_name:
-        welcome = f"您好，我是{agent_name.strip()}。{DEFAULT_WELCOME.removeprefix('您好，我是健康优选 AI 膳食顾问。').strip()}"
+    if agent_name.strip() and "课程顾问" not in agent_name:
+        welcome = (
+            f"您好，我是{agent_name.strip()}。"
+            f"{DEFAULT_WELCOME.removeprefix('您好，我是 AI 教育中心课程顾问。').strip()}"
+        )
     return {
         "soul": DEFAULT_SOUL,
         "prohibitionRules": DEFAULT_PROHIBITION_RULES,
@@ -118,81 +125,59 @@ def default_react_config(
     }
 
 
-def default_tools_from_knowledge_bases(
-    knowledge_bases: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    core_ids: list[str] = []
-    platform_ids: list[str] = []
-    others: list[dict[str, Any]] = []
-    for kb in knowledge_bases:
-        kb_id = str(kb.get("id") or "").strip()
-        if not kb_id:
-            continue
-        label = str(kb.get("materialLabel") or kb.get("material_label") or "").lower()
-        name = str(kb.get("name") or "")
-        blob = f"{label} {name}"
-        if any(token in blob for token in ("material_c", "白皮书", "平台服务", "会员")):
-            platform_ids.append(kb_id)
-        elif any(
-            token in blob
-            for token in ("material_a", "material_b", "膳食指南", "饮食计划", "营养")
-        ):
-            core_ids.append(kb_id)
-        else:
-            others.append(kb)
+_LEGACY_DEFAULT_TOOL_NAMES = frozenset(
+    {"search_core_nutrition", "search_platform_guide"}
+)
+_AUTO_DEFAULT_KB_TOOL_RE = re.compile(r"^search_kb_\d+$")
 
-    tools: list[dict[str, Any]] = [dict(item) for item in BUILTIN_PROFILE_TOOLS]
-    if core_ids:
-        tools.append(
-            {
-                "id": "tool_core_nutrition",
-                "name": "search_core_nutrition",
-                "description": (
-                    "检索核心营养知识库（膳食指南、个性化饮食计划）。"
-                    "用于减脂/增肌/调理推荐、食材营养成分、搭配原则、禁忌与替换。"
-                    "禁止用于会员价格、企业合作或平台套餐介绍。"
-                ),
-                "knowledgeBaseIds": core_ids,
-                "enabled": True,
-            }
-        )
-    if platform_ids:
-        tools.append(
-            {
-                "id": "tool_platform",
-                "name": "search_platform_guide",
-                "description": (
-                    "检索健康优选平台白皮书。仅用于平台介绍、会员订阅、企业健康管理、合作方案。"
-                    "禁止用于膳食方案推荐或营养成分问答。"
-                ),
-                "knowledgeBaseIds": platform_ids,
-                "enabled": True,
-            }
-        )
-    for index, kb in enumerate(others, start=1):
-        kb_id = str(kb.get("id") or "").strip()
-        kb_name = str(kb.get("name") or f"知识库{index}")
-        tools.append(
-            {
-                "id": f"tool_kb_{index}",
-                "name": sanitize_tool_name(f"search_{kb_name}", f"search_kb_{index}"),
-                "description": f"检索知识库「{kb_name}」。仅在问题与该库主题相关时调用。",
-                "knowledgeBaseIds": [kb_id],
-                "enabled": True,
-            }
-        )
-    return tools
+TENANT_KB_SEARCH_TOOL = {
+    "id": "tool_search_knowledge",
+    "name": "search_knowledge",
+    "kind": "kb",
+    "description": (
+        "检索本机构知识库中的课程资料与文档。"
+        "资料性问答必须先调用；未绑定具体知识库时自动检索该机构全部知识库。"
+        "禁止用模型自身知识编造资料。"
+    ),
+    "knowledgeBaseIds": [],
+    "enabled": True,
+}
+
+
+def default_tools_from_knowledge_bases(
+    knowledge_bases: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """默认只保留班型 Skill；知识库检索在对话时按本机构库自动挂上。"""
+    _ = knowledge_bases
+    return [dict(item) for item in BUILTIN_COURSE_SKILLS]
+
+
+def _is_auto_default_kb_tool(name: str) -> bool:
+    return name in _LEGACY_DEFAULT_TOOL_NAMES or bool(_AUTO_DEFAULT_KB_TOOL_RE.fullmatch(name))
+
+
+_BUILTIN_KINDS = {
+    "profile_get",
+    "profile_update",
+    "course_detail",
+    "course_recommend",
+    "kb",
+}
 
 
 def _tool_kind(item: dict[str, Any]) -> str:
     kind = str(item.get("kind") or "").strip()
     name = str(item.get("name") or "")
-    if kind in ("profile_get", "profile_update", "kb"):
+    if kind in _BUILTIN_KINDS:
         return kind
     if name == "get_user_profile":
         return "profile_get"
     if name == "update_user_profile":
         return "profile_update"
+    if name == "query_course_detail":
+        return "course_detail"
+    if name == "recommend_courses":
+        return "course_recommend"
     return "kb"
 
 
@@ -200,9 +185,36 @@ def _is_runnable_tool(item: dict[str, Any]) -> bool:
     if not item.get("enabled"):
         return False
     kind = _tool_kind(item)
-    if kind in ("profile_get", "profile_update"):
+    if kind in ("profile_get", "profile_update", "course_detail", "course_recommend", "kb"):
         return True
     return bool(item.get("knowledgeBaseIds"))
+
+
+def _tenant_kb_ids(db: Session, agent_id: str) -> list[str]:
+    try:
+        return MaterialService(db).list_kb_ids_for_agent(agent_id)
+    except Exception:
+        logger.exception("Failed to list tenant knowledge bases for %s", agent_id)
+        return []
+
+
+def bind_tools_to_tenant_knowledge(
+    tools: list[dict[str, Any]],
+    kb_ids: list[str],
+) -> list[dict[str, Any]]:
+    """未绑定知识库的检索工具，运行时落到本机构知识库。"""
+    bound: list[dict[str, Any]] = []
+    has_kb_tool = False
+    for item in tools:
+        tool = dict(item)
+        if _tool_kind(tool) == "kb":
+            has_kb_tool = True
+            if not tool.get("knowledgeBaseIds") and kb_ids:
+                tool["knowledgeBaseIds"] = list(kb_ids)
+        bound.append(tool)
+    if not has_kb_tool and kb_ids:
+        bound.append({**TENANT_KB_SEARCH_TOOL, "knowledgeBaseIds": list(kb_ids)})
+    return bound
 
 
 def normalize_react_config(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -213,7 +225,11 @@ def normalize_react_config(raw: dict[str, Any] | None) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         kind = _tool_kind(item)
-        name = sanitize_tool_name(str(item.get("name") or f"search_kb_{index + 1}"))
+        if kind in ("profile_get", "profile_update"):
+            continue
+        name = sanitize_tool_name(str(item.get("name") or f"search_docs_{index + 1}"))
+        if _is_auto_default_kb_tool(name):
+            continue
         original = name
         suffix = 2
         while name in seen_names:
@@ -225,11 +241,7 @@ def normalize_react_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             for kb in (item.get("knowledgeBaseIds") or [])
             if str(kb).strip()
         ]
-        if kind in ("profile_get", "profile_update"):
-            kb_ids = []
         enabled = bool(item.get("enabled", True))
-        if kind == "kb":
-            enabled = enabled and bool(kb_ids)
         tools.append(
             {
                 "id": str(item.get("id") or f"tool_{index + 1}"),
@@ -242,17 +254,31 @@ def normalize_react_config(raw: dict[str, Any] | None) -> dict[str, Any]:
         )
     by_name = {item["name"]: item for item in tools}
     merged: list[dict[str, Any]] = []
-    reserved = {item["name"] for item in BUILTIN_PROFILE_TOOLS}
-    for builtin in BUILTIN_PROFILE_TOOLS:
+    builtin_tools = [dict(item) for item in BUILTIN_COURSE_SKILLS]
+    reserved = {item["name"] for item in builtin_tools}
+    reserved_kinds = {
+        "course_detail",
+        "course_recommend",
+    }
+    for builtin in builtin_tools:
         existing = by_name.get(builtin["name"])
         merged.append(
             {
                 **builtin,
                 "enabled": existing.get("enabled", True) if existing else True,
+                "description": (
+                    str(existing.get("description") or "").strip()
+                    or builtin["description"]
+                    if existing
+                    else builtin["description"]
+                ),
+                "knowledgeBaseIds": (
+                    list(existing.get("knowledgeBaseIds") or []) if existing else []
+                ),
             }
         )
     for item in tools:
-        if item["name"] in reserved or item.get("kind") in ("profile_get", "profile_update"):
+        if item["name"] in reserved or item.get("kind") in reserved_kinds:
             continue
         merged.append(item)
     try:
@@ -285,11 +311,13 @@ def build_system_prompt(react_cfg: dict[str, Any], enabled_tools: list[dict[str,
     return (
         f"{react_cfg['soul']}\n\n"
         f"{react_cfg['prohibitionRules']}\n\n"
-        "你可以通过函数工具检索知识库，或读写用户画像，可多次调用。"
-        "回答膳食/蛋白质/热量问题前必须先 get_user_profile；"
-        "用户提到新的目标、疾病、过敏或忌口时调用 update_user_profile。"
-        "update_user_profile 会自行读取该用户在数据库中的发言并用模型归纳，不必在参数里复述全部对话。"
-        "先工具后回答；不要在没有资料时给出具体数字或方案名称。\n"
+        "你可以通过函数工具查询班型、推荐课程或检索知识库，可多次调用。"
+        "班型详情必须先 query_course_detail；约束推荐必须先 recommend_courses。"
+        "资料性问答必须先调用知识库检索工具；未绑定具体知识库时，工具会检索本机构全部知识库。"
+        "禁止用模型自身知识代替检索结果。"
+        "Skill 返回 SKILL_FALLBACK 时按降级策略请用户补充或说明未找到，不要编造。"
+        f"资料不足时使用原句「{OUT_OF_KNOWLEDGE_REPLY}」。"
+        "先工具后回答。\n"
         f"可用工具：\n{catalog}"
     )
 
@@ -300,6 +328,11 @@ def to_openai_tools(enabled_tools: list[dict[str, Any]]) -> list[dict[str, Any]]
         kind = _tool_kind(tool)
         if kind == "profile_get":
             parameters: dict[str, Any] = {
+                "type": "object",
+                "properties": {},
+            }
+        elif kind in ("course_detail", "course_recommend"):
+            parameters = COURSE_SKILL_SCHEMAS.get(tool["name"]) or {
                 "type": "object",
                 "properties": {},
             }
@@ -402,8 +435,12 @@ def execute_named_tool(
             ),
             [],
         )
+    if kind == "course_detail":
+        return execute_query_course_detail(args), []
+    if kind == "course_recommend":
+        return execute_recommend_courses(args), []
     query = str(args.get("query") or user_text)
-    return execute_kb_tool(db, tool=tool, query=query)
+    return execute_kb_tool(db, tool=tool, query=query, agent_id=agent_id)
 
 
 def execute_kb_tool(
@@ -412,23 +449,36 @@ def execute_kb_tool(
     tool: dict[str, Any],
     query: str,
     top_k: int = 6,
+    agent_id: str | None = None,
 ) -> tuple[str, list[Citation]]:
     kb_ids = [str(item).strip() for item in (tool.get("knowledgeBaseIds") or []) if str(item).strip()]
-    if not kb_ids:
-        return "该工具未绑定知识库。", []
     q = (query or "").strip()
     if not q:
         return "检索词为空。", []
 
     merged: dict[str, Any] = {}
-    for kb_id in kb_ids:
-        for hit in retrieve_by_kb_id(db, kb_id=kb_id, query=q, top_k=top_k):
+    if kb_ids:
+        for kb_id in kb_ids:
+            for hit in retrieve_by_kb_id(
+                db, kb_id=kb_id, query=q, top_k=top_k, agent_id=agent_id
+            ):
+                existing = merged.get(hit.chunkId)
+                if existing is None or (hit.score or 0) > (existing.score or 0):
+                    merged[hit.chunkId] = hit
+    elif agent_id:
+        for hit in retrieve_for_agent(db, agent_id=agent_id, query=q, top_k=top_k):
             existing = merged.get(hit.chunkId)
             if existing is None or (hit.score or 0) > (existing.score or 0):
                 merged[hit.chunkId] = hit
+    else:
+        return "该工具未绑定知识库。", []
     hits = sorted(merged.values(), key=lambda item: item.score or 0.0, reverse=True)[:top_k]
     if not hits:
-        return f"知识库「{tool['name']}」未检索到与「{q}」相关的资料。", []
+        return (
+            f"知识库「{tool['name']}」未检索到与「{q}」相关的资料。"
+            f"{OUT_OF_KNOWLEDGE_REPLY}",
+            [],
+        )
     citations = hits_to_citations_from_hits(hits)
     body = format_hits_for_prompt(hits)
     return f"工具 {tool['name']} 检索结果：\n{body}", citations
@@ -460,6 +510,8 @@ def iter_react_turn(
 ) -> Iterator[tuple[str, Any]]:
     """产出 trace / delta / result 事件。"""
     cfg = normalize_react_config(react_cfg)
+    tenant_kb_ids = _tenant_kb_ids(db, agent_id)
+    cfg["tools"] = bind_tools_to_tenant_knowledge(cfg["tools"], tenant_kb_ids)
     enabled = [t for t in cfg["tools"] if _is_runnable_tool(t)]
     runtime = resolve_agent_doubao_runtime(db, agent_id)
     if not runtime.is_configured:

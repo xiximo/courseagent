@@ -1,17 +1,19 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiBusinessError
+from app.db.models.tenant import TenantRecord
 from app.db.models.user import AccountStatus, User
 from app.schemas.auth import AuthUserProfile
 from app.schemas.users import UserAccountDto, UserPersonaProfileDto
 from app.services.password import hash_password
-from app.services.persona_users import PERSONA_USERS, TEST_USER_PASSWORD
+from app.services.persona_users import LEGACY_PERSONA_USERNAMES
+from app.services.tenant_scope import first_user_role_codes
 
-SEED_USERNAMES = {item["username"] for item in PERSONA_USERS}
+SEED_USERNAMES: set[str] = set()
 
 
 def get_user_by_username(db: Session, username: str) -> User | None:
@@ -36,11 +38,14 @@ def to_auth_profile(user: User) -> AuthUserProfile:
         deptId=user.dept_id,
         status=user.status.value,
         roleCodes=list(user.role_codes or []),
+        planCode=getattr(user, "plan_code", None) or "free",
         lastLoginAt=user.last_login_at.isoformat() if user.last_login_at else None,
     )
 
 
-def to_user_account_dto(user: User) -> UserAccountDto:
+def to_user_account_dto(
+    user: User, *, tenant_name: str | None = None
+) -> UserAccountDto:
     profile = UserPersonaProfileDto.model_validate(_profile_dict(user))
     return UserAccountDto(
         id=str(user.id),
@@ -52,12 +57,35 @@ def to_user_account_dto(user: User) -> UserAccountDto:
         lastLoginAt=user.last_login_at.isoformat() if user.last_login_at else None,
         createdAt=user.created_at.isoformat() if user.created_at else None,
         isSeed=user.username in SEED_USERNAMES,
+        tenantId=str(user.tenant_id) if user.tenant_id else None,
+        tenantName=tenant_name,
     )
 
 
+def to_user_account_dto_with_tenant(db: Session, user: User) -> UserAccountDto:
+    tenant_name = None
+    if user.tenant_id:
+        tenant = db.get(TenantRecord, user.tenant_id)
+        tenant_name = tenant.name if tenant is not None else None
+    return to_user_account_dto(user, tenant_name=tenant_name)
+
+
 def list_users(db: Session) -> list[UserAccountDto]:
-    rows = db.scalars(select(User).order_by(User.created_at.asc())).all()
-    return [to_user_account_dto(row) for row in rows]
+    rows = list(db.scalars(select(User).order_by(User.created_at.asc())).all())
+    tenant_ids = [row.tenant_id for row in rows if row.tenant_id]
+    names: dict[str, str] = {}
+    if tenant_ids:
+        for tenant in db.scalars(
+            select(TenantRecord).where(TenantRecord.id.in_(tenant_ids))
+        ):
+            names[str(tenant.id)] = tenant.name
+    return [
+        to_user_account_dto(
+            row,
+            tenant_name=names.get(str(row.tenant_id)) if row.tenant_id else None,
+        )
+        for row in rows
+    ]
 
 
 def create_user(
@@ -69,17 +97,26 @@ def create_user(
     status: AccountStatus,
     role_codes: list[str],
     profile: dict,
+    tenant_id: UUID | None = None,
 ) -> User:
     name = username.strip()
     if get_user_by_username(db, name):
         raise ApiBusinessError("USERNAME_TAKEN", "用户名已存在", 409)
+    roles = list(role_codes or ["end_user"])
+    if tenant_id is not None:
+        existing = int(
+            db.scalar(select(func.count()).select_from(User).where(User.tenant_id == tenant_id))
+            or 0
+        )
+        roles = first_user_role_codes(existing, roles)
     user = User(
         username=name,
         password_hash=hash_password(password),
         full_name=full_name.strip(),
         status=status,
-        role_codes=role_codes or ["end_user"],
+        role_codes=roles,
         profile_json=profile or {},
+        tenant_id=tenant_id,
     )
     db.add(user)
     db.commit()
@@ -146,26 +183,16 @@ def _enabled_admin_count(db: Session, *, exclude_id: UUID) -> int:
 
 
 def ensure_persona_test_users(db: Session) -> None:
-    for item in PERSONA_USERS:
-        username = item["username"]
-        existing = get_user_by_username(db, username)
-        if existing:
-            existing.full_name = item["fullName"]
-            existing.role_codes = list(item["roleCodes"])
-            current = existing.profile_json if isinstance(existing.profile_json, dict) else {}
-            if not current:
-                existing.profile_json = dict(item["profile"])
-            continue
-        db.add(
-            User(
-                username=username,
-                password_hash=hash_password(TEST_USER_PASSWORD),
-                full_name=item["fullName"],
-                status=AccountStatus.enabled,
-                role_codes=list(item["roleCodes"]),
-                profile_json=dict(item["profile"]),
-            )
-        )
+    """不再预置画像测试号；启动时清掉旧的 fatloss/muscle/wellness/member。"""
+    rows = list(
+        db.scalars(
+            select(User).where(User.username.in_(LEGACY_PERSONA_USERNAMES))
+        ).all()
+    )
+    if not rows:
+        return
+    for user in rows:
+        db.delete(user)
     db.commit()
 
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -43,10 +44,17 @@ from app.schemas.course_agent import (
     UpdateCourseModelBody,
 )
 from app.schemas.processing import AttachmentExtractedTextDto
+from app.services.billing import (
+    require_agent_type_for_plan,
+    require_knowledge_base_quota,
+    require_pro_plan,
+)
+from app.services.tenant_scope import resolve_tenant_scope
+from app.services.users import get_user_by_id
 
 router = APIRouter(tags=["course-agent"])
 
-_ADMIN_ROLES = {"sys_admin", "system_admin", "admin"}
+_ADMIN_ROLES = {"sys_admin", "system_admin", "admin", "org_admin"}
 
 
 def _require_admin(
@@ -56,6 +64,22 @@ def _require_admin(
     if not (codes & _ADMIN_ROLES):
         raise ApiBusinessError("FORBIDDEN", "仅管理员可查看会话记录", 403)
     return user
+
+
+def _require_knowledge_admin(
+    user: AuthUserProfile = Depends(get_current_user),
+) -> AuthUserProfile:
+    return _require_admin(user)
+
+
+def _agent_service(db: Session, user: AuthUserProfile) -> CourseAgentService:
+    service = CourseAgentService(db, scope=resolve_tenant_scope(user))
+    service.ensure_workspace()
+    return service
+
+
+def _material_service(db: Session, user: AuthUserProfile) -> MaterialService:
+    return MaterialService(db, scope=resolve_tenant_scope(user))
 
 SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -115,7 +139,7 @@ def list_course_agents(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).list_agents())
+    return success(_agent_service(db, _user).list_agents())
 
 
 @router.get(
@@ -130,7 +154,7 @@ def list_course_agent_leads(
     db: Session = Depends(get_db),
 ):
     return success(
-        CourseAgentService(db).list_leads(
+        _agent_service(db, _user).list_leads(
             agent_id=agent_id, limit=limit, offset=offset
         )
     )
@@ -146,7 +170,7 @@ def get_course_agent_lead(
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(lead_id, label="线索 ID")
-    return success(CourseAgentService(db).get_lead(parsed))
+    return success(_agent_service(db, _user).get_lead(parsed))
 
 
 @router.delete(
@@ -160,7 +184,7 @@ def delete_course_agent_lead(
 ):
     parsed = _parse_uuid(lead_id, label="线索 ID")
     return success(
-        DeleteCourseAgentLeadResultDto(**CourseAgentService(db).delete_lead(parsed))
+        DeleteCourseAgentLeadResultDto(**_agent_service(db, _user).delete_lead(parsed))
     )
 
 
@@ -170,10 +194,16 @@ def delete_course_agent_lead(
 )
 def list_admin_session_records(
     agent_id: str | None = None,
-    _: AuthUserProfile = Depends(_require_admin),
+    from_time: datetime | None = Query(default=None, alias="from"),
+    to_time: datetime | None = Query(default=None, alias="to"),
+    _user: AuthUserProfile = Depends(_require_admin),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).list_admin_session_groups(agent_id))
+    return success(
+        _agent_service(db, _user).list_admin_session_groups(
+            agent_id, from_dt=from_time, to_dt=to_time
+        )
+    )
 
 
 @router.get(
@@ -182,11 +212,11 @@ def list_admin_session_records(
 )
 def get_admin_session_record(
     session_id: str,
-    _: AuthUserProfile = Depends(_require_admin),
+    _user: AuthUserProfile = Depends(_require_admin),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    return success(CourseAgentService(db).get_admin_session(parsed))
+    return success(_agent_service(db, _user).get_admin_session(parsed))
 
 
 @router.delete(
@@ -195,11 +225,11 @@ def get_admin_session_record(
 )
 def delete_admin_session_record(
     session_id: str,
-    _: AuthUserProfile = Depends(_require_admin),
+    _user: AuthUserProfile = Depends(_require_admin),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    CourseAgentService(db).delete_admin_session(parsed)
+    _agent_service(db, _user).delete_admin_session(parsed)
     return success(DeleteCourseAgentSessionResultDto())
 
 
@@ -212,7 +242,9 @@ def create_course_agent(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).create_agent(body))
+    account = get_user_by_id(db, uuid.UUID(_user.id))
+    require_agent_type_for_plan(account, db, body.agentType)
+    return success(_agent_service(db, _user).create_agent(body))
 
 
 @router.delete(
@@ -224,7 +256,7 @@ def delete_course_agent(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(DeleteCourseAgentResultDto(**CourseAgentService(db).delete_agent(agent_id)))
+    return success(DeleteCourseAgentResultDto(**_agent_service(db, _user).delete_agent(agent_id)))
 
 
 @router.get(
@@ -236,7 +268,7 @@ def get_course_agent(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).get_agent(agent_id))
+    return success(_agent_service(db, _user).get_agent(agent_id))
 
 
 @router.patch(
@@ -249,7 +281,7 @@ def patch_course_agent(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).update_agent(agent_id, body))
+    return success(_agent_service(db, _user).update_agent(agent_id, body))
 
 
 @router.post(
@@ -261,7 +293,7 @@ def set_default_course_agent(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).set_default_agent(agent_id))
+    return success(_agent_service(db, _user).set_default_agent(agent_id))
 
 
 @router.post(
@@ -270,10 +302,12 @@ def set_default_course_agent(
 )
 def run_course_agent_schedule(
     agent_id: str,
-    _: AuthUserProfile = Depends(_require_admin),
+    _user: AuthUserProfile = Depends(_require_admin),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).run_schedule_now(agent_id))
+    account = get_user_by_id(db, uuid.UUID(_user.id))
+    require_pro_plan(account, db=db)
+    return success(_agent_service(db, _user).run_schedule_now(agent_id))
 
 
 @router.get(
@@ -284,7 +318,7 @@ def list_platform_knowledge_bases(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(MaterialService(db).list_all_knowledge_bases())
+    return success(_material_service(db, _user).list_all_knowledge_bases())
 
 
 @router.post(
@@ -293,13 +327,18 @@ def list_platform_knowledge_bases(
 )
 def create_platform_knowledge_base(
     body: CreateCourseKnowledgeBaseBody,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
+    account = get_user_by_id(db, uuid.UUID(_user.id))
+    require_knowledge_base_quota(db, account)
     return success(
-        MaterialService(db).create_knowledge_base(
+        _material_service(db, _user).create_knowledge_base(
             name=body.name,
             description=body.description,
+            chunk_mode=body.chunkMode,
+            chunk_max_chars=body.chunkMaxChars,
+            chunk_overlap_chars=body.chunkOverlapChars,
         )
     )
 
@@ -313,7 +352,7 @@ def get_platform_knowledge_base(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(MaterialService(db).get_knowledge_base(kb_id))
+    return success(_material_service(db, _user).get_knowledge_base(kb_id))
 
 
 @router.patch(
@@ -323,14 +362,17 @@ def get_platform_knowledge_base(
 def update_platform_knowledge_base(
     kb_id: str,
     body: UpdateCourseKnowledgeBaseBody,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
     return success(
-        MaterialService(db).update_knowledge_base(
+        _material_service(db, _user).update_knowledge_base(
             kb_id,
             name=body.name,
             description=body.description,
+            chunk_mode=body.chunkMode,
+            chunk_max_chars=body.chunkMaxChars,
+            chunk_overlap_chars=body.chunkOverlapChars,
         )
     )
 
@@ -341,10 +383,10 @@ def update_platform_knowledge_base(
 )
 def delete_platform_knowledge_base(
     kb_id: str,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
-    MaterialService(db).delete_knowledge_base(kb_id)
+    _material_service(db, _user).delete_knowledge_base(kb_id)
     return success(DeleteCourseKnowledgeBaseResultDto())
 
 
@@ -357,7 +399,7 @@ def list_platform_knowledge_documents(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    material = MaterialService(db)
+    material = _material_service(db, _user)
     kb = material.get_knowledge_base(kb_id)
     docs = material.list_material_documents(kb.materialLabel)
     return success([CourseMaterialDocumentDto.model_validate(item) for item in docs])
@@ -370,7 +412,7 @@ def list_platform_knowledge_documents(
 async def upload_platform_knowledge_document(
     kb_id: str,
     request: Request,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
     content_type = request.headers.get("content-type", "")
@@ -388,7 +430,7 @@ async def upload_platform_knowledge_document(
 
     file_bytes = await upload.read()
     file_name = getattr(upload, "filename", None) or "document.pdf"
-    material = MaterialService(db)
+    material = _material_service(db, _user)
     kb = material.get_knowledge_base(kb_id)
     updated = material.upload_material(
         kb.materialLabel,
@@ -411,11 +453,11 @@ async def upload_platform_knowledge_document(
 def delete_platform_knowledge_document(
     kb_id: str,
     attachment_id: str,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(attachment_id, label="文档 ID")
-    material = MaterialService(db)
+    material = _material_service(db, _user)
     kb = material.get_knowledge_base(kb_id)
     updated = material.delete_material_document(kb.materialLabel, parsed)
     return success(
@@ -433,10 +475,10 @@ def delete_platform_knowledge_document(
 )
 def reindex_platform_knowledge_base(
     kb_id: str,
-    _user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(_require_knowledge_admin),
     db: Session = Depends(get_db),
 ):
-    material = MaterialService(db)
+    material = _material_service(db, _user)
     kb = material.get_knowledge_base(kb_id)
     updated = material.reindex_material(kb.materialLabel)
     return success(
@@ -519,9 +561,14 @@ def create_course_knowledge_base(
     db: Session = Depends(get_db),
 ):
     del agent_id  # 知识库为平台资源，不再挂靠 Agent
-    kb = MaterialService(db).create_knowledge_base(
+    account = get_user_by_id(db, uuid.UUID(_user.id))
+    require_knowledge_base_quota(db, account)
+    kb = _material_service(db, _user).create_knowledge_base(
         name=body.name,
         description=body.description,
+        chunk_mode=body.chunkMode,
+        chunk_max_chars=body.chunkMaxChars,
+        chunk_overlap_chars=body.chunkOverlapChars,
     )
     return success(kb)
 
@@ -608,10 +655,13 @@ def update_course_knowledge_base(
     db: Session = Depends(get_db),
 ):
     del agent_id
-    kb = MaterialService(db).update_knowledge_base(
+    kb = _material_service(db, _user).update_knowledge_base(
         kb_id,
         name=body.name,
         description=body.description,
+        chunk_mode=body.chunkMode,
+        chunk_max_chars=body.chunkMaxChars,
+        chunk_overlap_chars=body.chunkOverlapChars,
     )
     return success(kb)
 
@@ -627,7 +677,7 @@ def delete_course_knowledge_base(
     db: Session = Depends(get_db),
 ):
     del agent_id
-    MaterialService(db).delete_knowledge_base(kb_id)
+    _material_service(db, _user).delete_knowledge_base(kb_id)
     return success(DeleteCourseKnowledgeBaseResultDto())
 
 
@@ -642,7 +692,7 @@ def list_course_material_documents(
     db: Session = Depends(get_db),
 ):
     del agent_id
-    docs = MaterialService(db).list_material_documents(material_label)
+    docs = _material_service(db, _user).list_material_documents(material_label)
     return success([CourseMaterialDocumentDto.model_validate(item) for item in docs])
 
 
@@ -674,7 +724,7 @@ async def upload_course_material(
     file_bytes = await upload.read()
     file_name = getattr(upload, "filename", None) or "document.pdf"
 
-    kb = MaterialService(db).upload_material(
+    kb = _material_service(db, _user).upload_material(
         material_label,
         file_name=file_name,
         file_bytes=file_bytes,
@@ -701,7 +751,7 @@ def delete_course_material_document(
 ):
     del agent_id
     parsed = _parse_uuid(attachment_id, label="文档 ID")
-    kb = MaterialService(db).delete_material_document(material_label, parsed)
+    kb = _material_service(db, _user).delete_material_document(material_label, parsed)
     return success(
         CourseMaterialActionResultDto(
             materialLabel=material_label,
@@ -722,7 +772,7 @@ def reindex_course_material(
     db: Session = Depends(get_db),
 ):
     del agent_id
-    kb = MaterialService(db).reindex_material(material_label)
+    kb = _material_service(db, _user).reindex_material(material_label)
     return success(
         CourseMaterialActionResultDto(
             materialLabel=material_label,
@@ -741,7 +791,7 @@ def create_preview_session(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).create_preview_session(agent_id))
+    return success(_agent_service(db, _user).create_preview_session(agent_id))
 
 
 @router.post(
@@ -755,7 +805,7 @@ def send_preview_message(
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    return success(CourseAgentService(db).send_preview_message(parsed, body.content))
+    return success(_agent_service(db, _user).send_preview_message(parsed, body.content))
 
 
 @router.post("/api/v1/course-agent/preview/sessions/{session_id}/messages/stream")
@@ -766,7 +816,7 @@ def send_preview_message_stream(
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    service = CourseAgentService(db)
+    service = _agent_service(db, _user)
 
     def event_stream():
         yield format_sse_event("ping", {"status": "started"})
@@ -792,7 +842,7 @@ def reset_preview_session(
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    return success(CourseAgentService(db).reset_preview_session(parsed))
+    return success(_agent_service(db, _user).reset_preview_session(parsed))
 
 
 def _require_user_id(user: AuthUserProfile) -> uuid.UUID:
@@ -814,7 +864,7 @@ def get_public_agent_config(
     _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).get_public_config(agent_id))
+    return success(_agent_service(db, _user).get_public_config(agent_id))
 
 
 @router.get(
@@ -827,7 +877,7 @@ def get_public_attachment_extracted_text(
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(attachment_id, label="附件 ID")
-    return success(CourseAgentService(db).get_public_attachment_extracted_text(parsed))
+    return success(_agent_service(db, _user).get_public_attachment_extracted_text(parsed))
 
 
 @router.post(
@@ -837,14 +887,14 @@ def get_public_attachment_extracted_text(
 def create_public_session(
     agent_id: str,
     request: Request,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return success(
-        CourseAgentService(db).create_session(
+        _agent_service(db, _user).create_session(
             agent_id,
             visitor=_visitor_from_request(request),
-            user_id=_require_user_id(user),
+            user_id=_require_user_id(_user),
         )
     )
 
@@ -855,10 +905,10 @@ def create_public_session(
 )
 def list_agent_sessions(
     agent_id: str,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return success(CourseAgentService(db).list_sessions(agent_id, _require_user_id(user)))
+    return success(_agent_service(db, _user).list_sessions(agent_id, _require_user_id(_user)))
 
 
 @router.get(
@@ -867,12 +917,12 @@ def list_agent_sessions(
 )
 def get_agent_session(
     session_id: str,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     return success(
-        CourseAgentService(db).get_session(parsed, user_id=_require_user_id(user))
+        _agent_service(db, _user).get_session(parsed, user_id=_require_user_id(_user))
     )
 
 
@@ -882,11 +932,11 @@ def get_agent_session(
 )
 def delete_agent_session(
     session_id: str,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
-    CourseAgentService(db).delete_session(parsed, user_id=_require_user_id(user))
+    _agent_service(db, _user).delete_session(parsed, user_id=_require_user_id(_user))
     return success(DeleteCourseAgentSessionResultDto())
 
 
@@ -898,16 +948,16 @@ def send_public_message(
     session_id: str,
     body: SendCourseAgentMessageBody,
     request: Request,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     return success(
-        CourseAgentService(db).send_message(
+        _agent_service(db, _user).send_message(
             parsed,
             body.content,
             visitor=_visitor_from_request(request),
-            user_id=_require_user_id(user),
+            user_id=_require_user_id(_user),
         )
     )
 
@@ -917,13 +967,13 @@ def send_public_message_stream(
     session_id: str,
     body: SendCourseAgentMessageBody,
     request: Request,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     visitor = _visitor_from_request(request)
-    user_id = _require_user_id(user)
-    service = CourseAgentService(db)
+    user_id = _require_user_id(_user)
+    service = _agent_service(db, _user)
 
     def event_stream():
         yield format_sse_event("ping", {"status": "started"})
@@ -949,14 +999,14 @@ def send_public_message_stream(
 def reset_public_session(
     session_id: str,
     request: Request,
-    user: AuthUserProfile = Depends(get_current_user),
+    _user: AuthUserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     parsed = _parse_uuid(session_id, label="会话 ID")
     return success(
-        CourseAgentService(db).reset_session(
+        _agent_service(db, _user).reset_session(
             parsed,
             visitor=_visitor_from_request(request),
-            user_id=_require_user_id(user),
+            user_id=_require_user_id(_user),
         )
     )

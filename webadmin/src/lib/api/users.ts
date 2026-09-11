@@ -14,16 +14,36 @@ import type {
   UserAccount,
 } from '@/features/users/data/types'
 
+type UserAccountPayload = UserAccount & {
+  tenant_id?: string | null
+  tenant_name?: string | null
+}
+
+function asOptionalText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+export function normalizeUserAccount(row: UserAccountPayload): UserAccount {
+  return {
+    ...row,
+    tenantId: asOptionalText(row.tenantId) ?? asOptionalText(row.tenant_id),
+    tenantName: asOptionalText(row.tenantName) ?? asOptionalText(row.tenant_name),
+  }
+}
+
 export async function listUsers(): Promise<UserAccount[]> {
   if (isDevMock()) return mockListUsers()
   const res = await apiFetch('GET', '/api/v1/users')
-  return readEnvelope<UserAccount[]>(res)
+  const rows = await readEnvelope<UserAccountPayload[]>(res)
+  return rows.map(normalizeUserAccount)
 }
 
 export async function createUser(body: CreateUserInput): Promise<UserAccount> {
   if (isDevMock()) return mockCreateUser(body)
   const res = await apiFetch('POST', '/api/v1/users', body)
-  return readEnvelope<UserAccount>(res)
+  return normalizeUserAccount(await readEnvelope<UserAccountPayload>(res))
 }
 
 export async function updateUser(
@@ -32,7 +52,7 @@ export async function updateUser(
 ): Promise<UserAccount> {
   if (isDevMock()) return mockUpdateUser(userId, body)
   const res = await apiFetch('PATCH', `/api/v1/users/${userId}`, body)
-  return readEnvelope<UserAccount>(res)
+  return normalizeUserAccount(await readEnvelope<UserAccountPayload>(res))
 }
 
 export async function deleteUser(userId: string): Promise<{ message: string }> {

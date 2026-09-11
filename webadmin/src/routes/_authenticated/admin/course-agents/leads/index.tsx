@@ -8,7 +8,7 @@ export const Route = createFileRoute(
   '/_authenticated/admin/course-agents/leads/'
 )({
   beforeLoad: () => {
-    appRouteGuard('/admin/course-agents')
+    appRouteGuard('/admin/course-agents/leads')
   },
   component: function AgentLeadsRoute() {
     return (

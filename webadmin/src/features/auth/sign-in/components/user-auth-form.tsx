@@ -75,7 +75,11 @@ export function UserAuthForm({
         })
       } else {
         navigate({
-          to: dest.to as '/admin/course-agents' | '/settings/account',
+          to: dest.to as
+            | '/admin'
+            | '/saasadmin'
+            | '/admin/course-agents'
+            | '/settings/account',
           replace: true,
         })
       }

@@ -24,6 +24,7 @@ export function SignIn2() {
               account?{' '}
               <Link
                 to='/sign-up'
+                search={{ intent: undefined }}
                 className='text-nowrap underline underline-offset-4 hover:text-primary'
               >
                 Sign Up

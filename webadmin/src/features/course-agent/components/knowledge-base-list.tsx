@@ -76,6 +76,7 @@ import {
 
 import { Textarea } from '@/components/ui/textarea'
 
+import { useKnowledgeConsolePaths } from '@/lib/auth/console-paths'
 import type { CourseAgentKnowledgeBase } from '../data/types'
 
 import {
@@ -87,6 +88,14 @@ import {
   STATUS_VARIANT,
 
 } from '../lib/knowledge-base-labels'
+import { KnowledgeBaseChunkFields } from './knowledge-base-chunk-fields'
+import {
+  chunkSettingSummary,
+  DEFAULT_CHUNK_MAX_CHARS,
+  DEFAULT_CHUNK_OVERLAP_CHARS,
+  normalizeChunkMode,
+  type KnowledgeChunkMode,
+} from '../lib/knowledge-base-chunk'
 
 
 
@@ -99,6 +108,10 @@ type KnowledgeBaseListProps = {
   knowledgeBases: CourseAgentKnowledgeBase[]
 
   readOnly?: boolean
+
+  createDisabled?: boolean
+
+  createHint?: string
 
   onCreated: (kb: CourseAgentKnowledgeBase) => void
 
@@ -116,6 +129,10 @@ export function KnowledgeBaseList({
 
   readOnly,
 
+  createDisabled,
+
+  createHint,
+
   onCreated,
 
   onUpdated,
@@ -123,6 +140,7 @@ export function KnowledgeBaseList({
   onDeleted,
 
 }: KnowledgeBaseListProps) {
+  const knowledgePaths = useKnowledgeConsolePaths()
 
   const [viewMode, setViewMode] = useState<ViewMode>('card')
 
@@ -144,6 +162,14 @@ export function KnowledgeBaseList({
 
   const [description, setDescription] = useState('')
 
+  const [chunkMode, setChunkMode] = useState<KnowledgeChunkMode>('size')
+
+  const [chunkMaxChars, setChunkMaxChars] = useState(DEFAULT_CHUNK_MAX_CHARS)
+
+  const [chunkOverlapChars, setChunkOverlapChars] = useState(
+    DEFAULT_CHUNK_OVERLAP_CHARS
+  )
+
 
 
   const resetForm = () => {
@@ -152,6 +178,12 @@ export function KnowledgeBaseList({
 
     setDescription('')
 
+    setChunkMode('size')
+
+    setChunkMaxChars(DEFAULT_CHUNK_MAX_CHARS)
+
+    setChunkOverlapChars(DEFAULT_CHUNK_OVERLAP_CHARS)
+
     setEditingKb(null)
 
   }
@@ -159,6 +191,14 @@ export function KnowledgeBaseList({
 
 
   const openCreateDialog = () => {
+
+    if (createDisabled) {
+
+      toast.error(createHint || '免费版仅可创建 1 个知识库，请升级专业版')
+
+      return
+
+    }
 
     resetForm()
 
@@ -175,6 +215,14 @@ export function KnowledgeBaseList({
     setName(kb.name)
 
     setDescription(kb.description ?? '')
+
+    setChunkMode(normalizeChunkMode(kb.chunkMode))
+
+    setChunkMaxChars(kb.chunkMaxChars || DEFAULT_CHUNK_MAX_CHARS)
+
+    setChunkOverlapChars(
+      kb.chunkOverlapChars ?? DEFAULT_CHUNK_OVERLAP_CHARS
+    )
 
     setDialogOpen(true)
 
@@ -216,6 +264,12 @@ export function KnowledgeBaseList({
 
           description: description.trim(),
 
+          chunkMode,
+
+          chunkMaxChars,
+
+          chunkOverlapChars,
+
         })
 
         onUpdated(kb)
@@ -229,6 +283,12 @@ export function KnowledgeBaseList({
           name: trimmed,
 
           description: description.trim(),
+
+          chunkMode,
+
+          chunkMaxChars,
+
+          chunkOverlapChars,
 
         })
 
@@ -298,9 +358,15 @@ export function KnowledgeBaseList({
 
           <p className='text-muted-foreground text-sm'>
 
-            管理平台知识库；进入后可上传文档、切片与向量索引
+            进入后可上传文档、切片与向量索引
 
           </p>
+
+          {createHint ? (
+
+            <p className='text-muted-foreground mt-1 text-xs'>{createHint}</p>
+
+          ) : null}
 
         </div>
 
@@ -352,7 +418,7 @@ export function KnowledgeBaseList({
 
             size='sm'
 
-            disabled={readOnly}
+            disabled={readOnly || createDisabled}
 
             onClick={openCreateDialog}
 
@@ -436,6 +502,8 @@ export function KnowledgeBaseList({
 
                   </Badge>
 
+                  <Badge variant='outline'>{chunkSettingSummary(kb)}</Badge>
+
                 </div>
 
                 <p className='text-muted-foreground text-sm'>
@@ -452,7 +520,7 @@ export function KnowledgeBaseList({
 
                   <Link
 
-                    to='/admin/knowledge/$kbId'
+                    to={knowledgePaths.detail}
 
                     params={{ kbId: kb.id }}
 
@@ -528,6 +596,8 @@ export function KnowledgeBaseList({
 
                   <TableHead>名称</TableHead>
 
+                  <TableHead>切片</TableHead>
+
                   <TableHead>文档/块</TableHead>
 
                   <TableHead>状态</TableHead>
@@ -566,6 +636,12 @@ export function KnowledgeBaseList({
 
                     </TableCell>
 
+                    <TableCell className='text-muted-foreground text-sm'>
+
+                      {chunkSettingSummary(kb)}
+
+                    </TableCell>
+
                     <TableCell>
 
                       {kb.documentCount} / {kb.chunkCount}
@@ -600,7 +676,7 @@ export function KnowledgeBaseList({
 
                           <Link
 
-                            to='/admin/knowledge/$kbId'
+                            to={knowledgePaths.detail}
 
                             params={{ kbId: kb.id }}
 
@@ -719,6 +795,24 @@ export function KnowledgeBaseList({
               />
 
             </div>
+
+            <KnowledgeBaseChunkFields
+
+              mode={chunkMode}
+
+              maxChars={chunkMaxChars}
+
+              overlapChars={chunkOverlapChars}
+
+              disabled={submitting}
+
+              onModeChange={setChunkMode}
+
+              onMaxCharsChange={setChunkMaxChars}
+
+              onOverlapCharsChange={setChunkOverlapChars}
+
+            />
 
           </div>
 

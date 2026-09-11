@@ -1,5 +1,7 @@
 from app.course_agent.react_agent import (
+    bind_tools_to_tenant_knowledge,
     default_tools_from_knowledge_bases,
+    execute_kb_tool,
     iter_react_turn,
     normalize_react_config,
     sanitize_tool_name,
@@ -15,27 +17,121 @@ def test_sanitize_tool_name():
     assert sanitize_tool_name("??") == "search_kb"
 
 
-def test_default_tools_include_profile_and_knowledge():
+def test_default_tools_are_course_skills_only():
     tools = default_tools_from_knowledge_bases(
         [
-            {"id": "kb_a", "name": "2026秋季健康膳食指南", "materialLabel": "material_a"},
-            {"id": "kb_b", "name": "个性化饮食计划方案", "materialLabel": "material_b"},
-            {"id": "kb_c", "name": "健康优选平台服务白皮书", "materialLabel": "material_c"},
+            {"id": "kb_a", "name": "顾问课程 material_b87628a5", "materialLabel": "material_b"},
+            {"id": "kb_c", "name": "平台白皮书", "materialLabel": "material_c"},
         ]
     )
-    names = {item["name"] for item in tools}
-    assert names == {
-        "get_user_profile",
-        "update_user_profile",
-        "search_core_nutrition",
-        "search_platform_guide",
-    }
-    core = next(item for item in tools if item["name"] == "search_core_nutrition")
-    platform = next(item for item in tools if item["name"] == "search_platform_guide")
-    assert set(core["knowledgeBaseIds"]) == {"kb_a", "kb_b"}
-    assert platform["knowledgeBaseIds"] == ["kb_c"]
-    assert "会员价格" in core["description"]
-    assert "禁止用于膳食方案" in platform["description"]
+    names = [item["name"] for item in tools]
+    assert names == ["query_course_detail", "recommend_courses"]
+    assert "search_kb_1" not in names
+    assert "search_core_nutrition" not in names
+
+
+def test_bind_unbound_kb_tool_uses_tenant_libraries():
+    tools = bind_tools_to_tenant_knowledge(
+        [
+            {"name": "query_course_detail", "kind": "course_detail", "enabled": True},
+            {"name": "search_kb_1", "kind": "kb", "knowledgeBaseIds": [], "enabled": True},
+        ],
+        ["kb_org_1", "kb_org_2"],
+    )
+    kb = next(item for item in tools if item["name"] == "search_kb_1")
+    assert kb["knowledgeBaseIds"] == ["kb_org_1", "kb_org_2"]
+
+
+def test_bind_injects_tenant_search_when_no_kb_tool():
+    tools = bind_tools_to_tenant_knowledge(
+        [{"name": "query_course_detail", "kind": "course_detail", "enabled": True}],
+        ["kb_org_1"],
+    )
+    names = [item["name"] for item in tools]
+    assert "search_knowledge" in names
+    search = next(item for item in tools if item["name"] == "search_knowledge")
+    assert search["knowledgeBaseIds"] == ["kb_org_1"]
+
+
+def test_execute_kb_tool_falls_back_to_agent_libraries(monkeypatch):
+    from app.course_agent import react_agent as ra
+    from app.course_agent.state_machine import Citation
+    from app.schemas.indexing import ChunkSearchHitDto
+
+    hit = ChunkSearchHitDto(
+        chunkId="c1",
+        attachmentId="att1",
+        standardId="std1",
+        content="机构自己的课程大纲",
+        score=0.9,
+        fileName="顾问课程手册",
+        positionLabel="第一章",
+    )
+    monkeypatch.setattr(ra, "retrieve_for_agent", lambda *args, **kwargs: [hit])
+    text, cites = execute_kb_tool(
+        None,
+        tool={"name": "search_kb_1", "knowledgeBaseIds": []},
+        query="课程大纲是什么",
+        agent_id="agt_org",
+    )
+    assert "顾问课程手册" in text or "课程大纲" in text
+    assert cites
+    assert isinstance(cites[0], Citation)
+
+
+def test_normalize_react_config_keeps_unbound_kb_tool():
+    cfg = normalize_react_config(
+        {
+            "soul": "soul",
+            "prohibitionRules": "no",
+            "tools": [{"name": "search_docs_1", "knowledgeBaseIds": [], "enabled": True}],
+        }
+    )
+    kb = next(item for item in cfg["tools"] if item["name"] == "search_docs_1")
+    assert kb["enabled"] is True
+    assert kb["knowledgeBaseIds"] == []
+
+
+def test_normalize_react_config_drops_legacy_nutrition_tools():
+    cfg = normalize_react_config(
+        {
+            "soul": "soul",
+            "prohibitionRules": "no",
+            "tools": [
+                {
+                    "name": "search_core_nutrition",
+                    "knowledgeBaseIds": ["kb_a"],
+                    "enabled": True,
+                },
+                {"name": "search_kb_1", "knowledgeBaseIds": ["kb_b"], "enabled": True},
+                {"name": "search_docs_1", "knowledgeBaseIds": ["kb_c"], "enabled": True},
+            ],
+        }
+    )
+    names = [item["name"] for item in cfg["tools"]]
+    assert "search_core_nutrition" not in names
+    assert "search_kb_1" not in names
+    assert "search_docs_1" in names
+
+
+def test_normalize_preserves_kb_binding_on_course_skills():
+    cfg = normalize_react_config(
+        {
+            "soul": "soul",
+            "prohibitionRules": "no",
+            "tools": [
+                {
+                    "name": "recommend_courses",
+                    "knowledgeBaseIds": ["kb_org"],
+                    "enabled": True,
+                    "description": "根据城市和时间偏好推荐班型",
+                }
+            ],
+        }
+    )
+    rec = next(item for item in cfg["tools"] if item["name"] == "recommend_courses")
+    assert rec["knowledgeBaseIds"] == ["kb_org"]
+    assert "根据城市" in rec["description"]
 
 
 def test_normalize_react_config_unique_names():
@@ -50,10 +146,42 @@ def test_normalize_react_config_unique_names():
         }
     )
     names = [item["name"] for item in cfg["tools"]]
-    assert names[:2] == ["get_user_profile", "update_user_profile"]
+    assert names[:2] == [
+        "query_course_detail",
+        "recommend_courses",
+    ]
     assert names[2] == "search_kb"
     assert names[3] == "search_kb_2"
     assert cfg["maxToolRounds"] == 5
+    assert "get_user_profile" not in names
+    assert "update_user_profile" not in names
+
+
+def test_normalize_react_config_strips_profile_tools():
+    cfg = normalize_react_config(
+        {
+            "soul": "soul",
+            "prohibitionRules": "no",
+            "tools": [
+                {
+                    "name": "get_user_profile",
+                    "kind": "profile_get",
+                    "enabled": True,
+                },
+                {
+                    "name": "update_user_profile",
+                    "kind": "profile_update",
+                    "enabled": True,
+                },
+                {"name": "search_kb", "knowledgeBaseIds": ["a"], "enabled": True},
+            ],
+        }
+    )
+    names = [item["name"] for item in cfg["tools"]]
+    assert names[:2] == ["query_course_detail", "recommend_courses"]
+    assert "get_user_profile" not in names
+    assert "update_user_profile" not in names
+    assert "search_kb" in names
 
 
 def test_merge_profile_appends_kidney_constraint():
@@ -109,9 +237,9 @@ def test_iter_react_turn_emits_tool_traces(monkeypatch):
         if calls["n"] == 1:
             return DoubaoCompletion(
                 content="",
-                reasoning="先读取用户画像再回答",
+                reasoning="先查询班型再回答",
                 tool_calls=[
-                    DoubaoToolCall(id="c1", name="get_user_profile", arguments="{}")
+                    DoubaoToolCall(id="c1", name="query_course_detail", arguments="{}")
                 ],
                 finish_reason="tool_calls",
                 assistant_message={"role": "assistant", "content": None},
@@ -153,7 +281,7 @@ def test_iter_react_turn_emits_tool_traces(monkeypatch):
         if kind == "trace" and payload.get("type") == "tool"
     ]
     assert tool_events
-    assert tool_events[0]["toolName"] == "get_user_profile"
+    assert tool_events[0]["toolName"] == "query_course_detail"
     result = next(payload for kind, payload in events if kind == "result")
     assert "低蛋白" in result["content"]
 
